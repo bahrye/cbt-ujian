@@ -19,80 +19,70 @@ export default function LoginPage() {
     
     setIsLoading(true);
     try {
-      // 1. Ambil dokumen user berdasarkan Username (Document ID)
+      // 1. Ambil email berdasarkan username di Firestore
       const userRef = doc(db, "users", username.toLowerCase().trim());
       const userSnap = await getDoc(userRef);
 
       if (!userSnap.exists()) {
-        throw new Error("Username tidak terdaftar!");
+        alert("Username tidak terdaftar!");
+        setIsLoading(false);
+        return;
       }
 
       const userData = userSnap.data();
       
-      // 2. Login menggunakan Email yang tersimpan di dokumen tersebut
+      // 2. Login ke Firebase Auth
       const userCredential = await signInWithEmailAndPassword(auth, userData.email, password);
       const user = userCredential.user;
 
-      // 3. Validasi ulang Role untuk pengalihan halaman
+      // 3. Arahkan berdasarkan role yang ada di Firestore
       const role = userData.role;
-
       if (role === 'admin') router.push('/admin');
       else if (role === 'guru') router.push('/guru');
       else if (role === 'pengawas') router.push('/pengawas');
       else router.push('/siswa');
       
     } catch (error: any) {
-      console.error("Detail Error:", error.code);
-      if (error.code === 'auth/invalid-credential') {
-        alert("Gagal Login: Username atau Password salah.");
-      } else {
-        alert("Terjadi kesalahan: " + error.message);
-      }
+      console.error(error);
+      alert("Login Gagal! Pastikan Username dan Password benar.");
     } finally {
       setIsLoading(false);
     }
   };
 
   return (
-    <div className="min-h-screen bg-slate-50 flex items-center justify-center p-4">
-      <div className="max-w-md w-full bg-white rounded-2xl shadow-xl p-8 space-y-6 border border-slate-100">
+    <div className="min-h-screen bg-slate-50 flex items-center justify-center p-4 italic">
+      <div className="max-w-md w-full bg-white rounded-3xl shadow-2xl p-10 space-y-6 border border-slate-100">
         <div className="text-center space-y-2">
-          <h1 className="text-3xl font-extrabold text-slate-900 tracking-tight">CBT Ujian</h1>
-          <p className="text-slate-500 text-sm">Masuk dengan Username Anda</p>
+          <h1 className="text-4xl font-black text-blue-600 tracking-tighter uppercase">CBT LOGIN</h1>
+          <p className="text-slate-400 text-xs font-bold uppercase tracking-widest">Masukkan Akun ID Anda</p>
         </div>
 
         <form onSubmit={handleLogin} className="space-y-4">
           <div className="space-y-1">
-            <label className="text-sm font-medium text-slate-700 ml-1">Username</label>
+            <label className="text-[10px] font-black text-slate-400 uppercase ml-1">Username</label>
             <div className="relative">
-              <User className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400 w-5 h-5" />
+              <User className="absolute left-4 top-1/2 -translate-y-1/2 text-slate-300 w-5 h-5" />
               <input 
-                type="text" 
-                placeholder="Masukkan username" 
-                required
-                value={username}
-                onChange={(e) => setUsername(e.target.value)} 
-                className="w-full pl-10 pr-4 py-3 bg-slate-50 border border-slate-200 rounded-xl focus:ring-2 focus:ring-blue-500 outline-none transition-all text-slate-900" 
+                type="text" placeholder="ID Pengguna" required
+                value={username} onChange={(e) => setUsername(e.target.value)} 
+                className="w-full pl-12 pr-4 py-4 bg-slate-50 border border-slate-100 rounded-2xl focus:ring-4 focus:ring-blue-50 focus:bg-white outline-none transition-all font-bold text-slate-700" 
               />
             </div>
           </div>
 
           <div className="space-y-1">
-            <label className="text-sm font-medium text-slate-700 ml-1">Password</label>
+            <label className="text-[10px] font-black text-slate-400 uppercase ml-1">Password</label>
             <div className="relative">
-              <Lock className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400 w-5 h-5" />
+              <Lock className="absolute left-4 top-1/2 -translate-y-1/2 text-slate-300 w-5 h-5" />
               <input 
-                type={showPassword ? "text" : "password"} 
-                placeholder="••••••••" 
-                required
-                value={password}
-                onChange={(e) => setPassword(e.target.value)} 
-                className="w-full pl-10 pr-12 py-3 bg-slate-50 border border-slate-200 rounded-xl focus:ring-2 focus:ring-blue-500 outline-none transition-all text-slate-900" 
+                type={showPassword ? "text" : "password"} placeholder="••••••••" required
+                value={password} onChange={(e) => setPassword(e.target.value)} 
+                className="w-full pl-12 pr-12 py-4 bg-slate-50 border border-slate-100 rounded-2xl focus:ring-4 focus:ring-blue-50 focus:bg-white outline-none transition-all font-bold text-slate-700" 
               />
               <button 
-                type="button"
-                onClick={() => setShowPassword(!showPassword)}
-                className="absolute right-3 top-1/2 -translate-y-1/2 text-slate-400 hover:text-slate-600"
+                type="button" onClick={() => setShowPassword(!showPassword)}
+                className="absolute right-4 top-1/2 -translate-y-1/2 text-slate-300 hover:text-blue-500 transition-colors"
               >
                 {showPassword ? <EyeOff className="w-5 h-5" /> : <Eye className="w-5 h-5" />}
               </button>
@@ -100,11 +90,10 @@ export default function LoginPage() {
           </div>
 
           <button 
-            type="submit" 
-            disabled={isLoading}
-            className="w-full bg-blue-600 hover:bg-blue-700 text-white font-semibold py-3 rounded-xl shadow-lg transition-all active:scale-[0.98] flex items-center justify-center gap-2 disabled:opacity-70"
+            type="submit" disabled={isLoading}
+            className="w-full bg-blue-600 hover:bg-blue-700 text-white font-black py-4 rounded-2xl shadow-xl shadow-blue-200 transition-all active:scale-95 flex items-center justify-center gap-2 disabled:opacity-50 uppercase text-sm tracking-widest"
           >
-            {isLoading ? <Loader2 className="w-5 h-5 animate-spin" /> : "Masuk"}
+            {isLoading ? <Loader2 className="w-5 h-5 animate-spin" /> : "Masuk Sistem"}
           </button>
         </form>
       </div>

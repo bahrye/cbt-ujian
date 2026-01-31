@@ -42,8 +42,12 @@ export default function LoginPage() {
       else router.push('/siswa');
       
     } catch (error: any) {
-      console.error(error);
-      alert("Login Gagal! Periksa kembali Username dan Password.");
+      console.error("Detail Error:", error.code);
+      if (error.code === 'auth/invalid-credential') {
+        alert("Gagal Login: Username atau Password salah.");
+      } else {
+        alert("Terjadi kesalahan: " + error.message);
+      }
     } finally {
       setIsLoading(false);
     }

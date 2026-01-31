@@ -1,16 +1,11 @@
 'use client'
 import { useState, useEffect } from 'react';
 import { db, auth } from '@/lib/firebase';
-import { createUserWithEmailAndPassword, signOut } from 'firebase/auth';
+import { createUserWithEmailAndPassword } from 'firebase/auth';
 import { 
-  collection, 
-  setDoc, 
-  doc, 
-  query, 
-  orderBy, 
-  onSnapshot, 
-  deleteDoc 
+  collection, setDoc, doc, query, orderBy, onSnapshot, deleteDoc 
 } from 'firebase/firestore';
+import * as XLSX from 'xlsx';
 
 export default function AdminDashboard() {
   const [users, setUsers] = useState<any[]>([]);
@@ -19,8 +14,8 @@ export default function AdminDashboard() {
   const [password, setPassword] = useState('');
   const [role, setRole] = useState('siswa');
   const [loading, setLoading] = useState(false);
+  const [importLoading, setImportLoading] = useState(false);
 
-  // 1. Ambil data user secara real-time untuk tabel
   useEffect(() => {
     const q = query(collection(db, "users"), orderBy("createdAt", "desc"));
     const unsubscribe = onSnapshot(q, (snapshot) => {
@@ -30,173 +25,128 @@ export default function AdminDashboard() {
     return () => unsubscribe();
   }, []);
 
-  // 2. Fungsi Tambah User (Auth + Firestore)
+  // --- FUNGSI IMPORT EXCEL ---
+  const handleImportExcel = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+
+    setImportLoading(true);
+    const reader = new FileReader();
+    
+    reader.onload = async (evt) => {
+      try {
+        const bstr = evt.target?.result;
+        const wb = XLSX.read(bstr, { type: 'binary' });
+        const wsname = wb.SheetNames[0];
+        const ws = wb.Sheets[wsname];
+        const data: any[] = XLSX.utils.sheet_to_json(ws);
+
+        for (const row of data) {
+          // Format Excel: Nama, Email, Password, Role
+          try {
+            const userCredential = await createUserWithEmailAndPassword(auth, row.Email, row.Password.toString());
+            await setDoc(doc(db, "users", userCredential.user.uid), {
+              uid: userCredential.user.uid,
+              nama: row.Nama,
+              email: row.Email,
+              role: row.Role.toLowerCase(),
+              createdAt: new Date()
+            });
+          } catch (err) {
+            console.error(`Gagal mendaftarkan ${row.Email}:`, err);
+          }
+        }
+        alert("Proses Import Selesai!");
+      } catch (error) {
+        alert("Gagal membaca file Excel. Pastikan format benar.");
+      } finally {
+        setImportLoading(false);
+      }
+    };
+    reader.readAsBinaryString(file);
+  };
+
   const handleAddUser = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (password.length < 6) return alert("Password minimal 6 karakter!");
-    
     setLoading(true);
     try {
-      // Buat akun di Firebase Authentication
       const userCredential = await createUserWithEmailAndPassword(auth, email, password);
-      const newUser = userCredential.user;
-
-      // Simpan data tambahan ke Firestore dengan ID yang sama (UID)
-      await setDoc(doc(db, "users", newUser.uid), {
-        uid: newUser.uid,
-        nama: nama,
-        email: email,
-        role: role,
-        createdAt: new Date()
+      await setDoc(doc(db, "users", userCredential.user.uid), {
+        uid: userCredential.user.uid,
+        nama, email, role, createdAt: new Date()
       });
-
-      alert(`Sukses! Akun ${role} untuk ${nama} berhasil dibuat.`);
-      
-      // Reset Form
-      setNama('');
-      setEmail('');
-      setPassword('');
+      alert("User Berhasil Dibuat!");
+      setNama(''); setEmail(''); setPassword('');
     } catch (error: any) {
-      if (error.code === 'auth/email-already-in-use') {
-        alert("Email sudah terdaftar!");
-      } else {
-        alert("Terjadi kesalahan: " + error.message);
-      }
+      alert(error.message);
     } finally {
       setLoading(false);
     }
   };
 
-  // 3. Fungsi Hapus User
-  const handleDeleteUser = async (id: string) => {
-    if (confirm("Hapus user ini dari database? (Catatan: Akun auth perlu dihapus manual di Firebase Console)")) {
-      try {
-        await deleteDoc(doc(db, "users", id));
-      } catch (error) {
-        alert("Gagal menghapus data.");
-      }
-    }
-  };
-
-  const handleLogout = async () => {
-    await signOut(auth);
-    window.location.href = '/login';
-  };
-
   return (
-    <div className="min-h-screen bg-gray-50 p-6 md:p-12">
+    <div className="min-h-screen bg-gray-50 p-6">
       <div className="max-w-6xl mx-auto">
-        
-        <div className="flex justify-between items-center mb-10">
-          <div>
-            <h1 className="text-3xl font-extrabold text-gray-900">Admin Dashboard</h1>
-            <p className="text-gray-500 text-sm">Manajemen User & Hak Akses CBT</p>
-          </div>
-          <button onClick={handleLogout} className="text-red-600 font-semibold hover:underline">
-            Logout
-          </button>
-        </div>
+        <h1 className="text-3xl font-bold mb-8">Admin Dashboard</h1>
 
         <div className="grid grid-cols-1 lg:grid-cols-3 gap-8">
-          
-          {/* FORM INPUT */}
-          <div className="bg-white p-8 rounded-2xl shadow-sm border border-gray-100">
-            <h2 className="text-xl font-bold mb-6 text-blue-700">Pendaftaran Akun</h2>
-            <form onSubmit={handleAddUser} className="space-y-5">
-              <div>
-                <label className="block text-xs font-bold uppercase text-gray-400 mb-1">Nama Lengkap</label>
-                <input 
-                  type="text" required value={nama}
-                  onChange={(e) => setNama(e.target.value)}
-                  className="w-full p-3 border border-gray-200 rounded-xl focus:ring-2 focus:ring-blue-500 outline-none"
-                  placeholder="Nama Pengguna"
-                />
-              </div>
-              <div>
-                <label className="block text-xs font-bold uppercase text-gray-400 mb-1">Alamat Email</label>
-                <input 
-                  type="email" required value={email}
-                  onChange={(e) => setEmail(e.target.value)}
-                  className="w-full p-3 border border-gray-200 rounded-xl focus:ring-2 focus:ring-blue-500 outline-none"
-                  placeholder="email@sekolah.com"
-                />
-              </div>
-              <div>
-                <label className="block text-xs font-bold uppercase text-gray-400 mb-1">Password</label>
-                <input 
-                  type="password" required value={password}
-                  onChange={(e) => setPassword(e.target.value)}
-                  className="w-full p-3 border border-gray-200 rounded-xl focus:ring-2 focus:ring-blue-500 outline-none"
-                  placeholder="Min. 6 Karakter"
-                />
-              </div>
-              <div>
-                <label className="block text-xs font-bold uppercase text-gray-400 mb-1">Role / Jabatan</label>
-                <select 
-                  value={role} onChange={(e) => setRole(e.target.value)}
-                  className="w-full p-3 border border-gray-200 rounded-xl bg-gray-50 outline-none"
-                >
+          <div className="space-y-6">
+            {/* FORM MANUAL */}
+            <div className="bg-white p-6 rounded-2xl shadow-sm border">
+              <h2 className="font-bold mb-4 text-blue-600">Input Manual</h2>
+              <form onSubmit={handleAddUser} className="space-y-3">
+                <input type="text" placeholder="Nama" value={nama} onChange={e => setNama(e.target.value)} className="w-full p-2 border rounded" required />
+                <input type="email" placeholder="Email" value={email} onChange={e => setEmail(e.target.value)} className="w-full p-2 border rounded" required />
+                <input type="password" placeholder="Password" value={password} onChange={e => setPassword(e.target.value)} className="w-full p-2 border rounded" required />
+                <select value={role} onChange={e => setRole(e.target.value)} className="w-full p-2 border rounded">
                   <option value="siswa">Siswa</option>
                   <option value="guru">Guru</option>
                   <option value="pengawas">Pengawas</option>
-                  <option value="admin">Admin</option>
                 </select>
-              </div>
-              <button 
-                type="submit" disabled={loading}
-                className="w-full bg-blue-600 text-white py-4 rounded-xl font-bold hover:bg-blue-700 transition-all shadow-lg"
-              >
-                {loading ? 'Sedang Memproses...' : 'Daftarkan Sekarang'}
-              </button>
-            </form>
+                <button className="w-full bg-blue-600 text-white py-2 rounded font-bold">{loading ? 'Loading...' : 'Simpan'}</button>
+              </form>
+            </div>
+
+            {/* IMPORT EXCEL */}
+            <div className="bg-green-50 p-6 rounded-2xl border border-green-200">
+              <h2 className="font-bold mb-2 text-green-700">Import Massal (Excel)</h2>
+              <p className="text-xs text-green-600 mb-4">Gunakan kolom: Nama, Email, Password, Role</p>
+              <input 
+                type="file" 
+                accept=".xlsx, .xls" 
+                onChange={handleImportExcel}
+                className="block w-full text-sm text-green-700 file:mr-4 file:py-2 file:px-4 file:rounded-full file:border-0 file:text-sm file:font-semibold file:bg-green-600 file:text-white hover:file:bg-green-700"
+              />
+              {importLoading && <p className="mt-2 text-xs animate-pulse">Sedang memproses banyak data...</p>}
+            </div>
           </div>
 
-          {/* TABEL LIST */}
-          <div className="lg:col-span-2 bg-white rounded-2xl shadow-sm border border-gray-100 overflow-hidden">
-            <div className="p-6 border-b border-gray-50 bg-gray-50/50">
-              <h2 className="text-lg font-bold text-gray-800">Daftar Akun Terdaftar</h2>
-            </div>
-            <div className="overflow-x-auto">
-              <table className="w-full text-left">
-                <thead>
-                  <tr className="text-gray-400 text-xs uppercase border-b border-gray-50">
-                    <th className="p-5">Informasi User</th>
-                    <th className="p-5 text-center">Role</th>
-                    <th className="p-5 text-center">Aksi</th>
+          {/* TABEL USER */}
+          <div className="lg:col-span-2 bg-white rounded-2xl shadow-sm border overflow-hidden">
+            <table className="w-full text-left">
+              <thead className="bg-gray-50 border-b">
+                <tr>
+                  <th className="p-4">Nama</th>
+                  <th className="p-4">Role</th>
+                  <th className="p-4 text-center">Aksi</th>
+                </tr>
+              </thead>
+              <tbody>
+                {users.map(u => (
+                  <tr key={u.id} className="border-b hover:bg-gray-50">
+                    <td className="p-4">
+                      <div className="font-bold">{u.nama}</div>
+                      <div className="text-xs text-gray-400">{u.email}</div>
+                    </td>
+                    <td className="p-4 uppercase text-xs font-bold">{u.role}</td>
+                    <td className="p-4 text-center">
+                      <button onClick={() => deleteDoc(doc(db, "users", u.id))} className="text-red-500 text-sm">Hapus</button>
+                    </td>
                   </tr>
-                </thead>
-                <tbody className="divide-y divide-gray-50">
-                  {users.map((u) => (
-                    <tr key={u.id} className="hover:bg-blue-50/30 transition-colors">
-                      <td className="p-5">
-                        <div className="font-bold text-gray-800">{u.nama}</div>
-                        <div className="text-sm text-gray-400">{u.email}</div>
-                      </td>
-                      <td className="p-5 text-center">
-                        <span className={`px-3 py-1 rounded-full text-[10px] font-black uppercase tracking-wider ${
-                          u.role === 'admin' ? 'bg-purple-100 text-purple-700' :
-                          u.role === 'guru' ? 'bg-amber-100 text-amber-700' :
-                          u.role === 'pengawas' ? 'bg-emerald-100 text-emerald-700' :
-                          'bg-blue-100 text-blue-700'
-                        }`}>
-                          {u.role}
-                        </span>
-                      </td>
-                      <td className="p-5 text-center">
-                        <button 
-                          onClick={() => handleDeleteUser(u.id)}
-                          className="text-red-400 hover:text-red-600 text-sm font-bold"
-                        >
-                          Hapus
-                        </button>
-                      </td>
-                    </tr>
-                  ))}
-                </tbody>
-              </table>
-            </div>
+                ))}
+              </tbody>
+            </table>
           </div>
-
         </div>
       </div>
     </div>

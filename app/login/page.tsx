@@ -2,12 +2,12 @@
 import { useState } from 'react';
 import { auth, db } from '@/lib/firebase';
 import { signInWithEmailAndPassword } from 'firebase/auth';
-import { doc, getDoc } from 'firebase/firestore';
+import { collection, query, where, getDocs, doc, getDoc } from 'firebase/firestore';
 import { useRouter } from 'next/navigation';
-import { Eye, EyeOff, Lock, Mail, Loader2 } from 'lucide-react'; // Pastikan instal lucide-react
+import { Eye, EyeOff, Lock, User, Loader2 } from 'lucide-react';
 
 export default function LoginPage() {
-  const [email, setEmail] = useState('');
+  const [username, setUsername] = useState(''); // Berubah dari email ke username
   const [password, setPassword] = useState('');
   const [showPassword, setShowPassword] = useState(false);
   const [isLoading, setIsLoading] = useState(false);
@@ -15,25 +15,36 @@ export default function LoginPage() {
 
   const handleLogin = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (!email || !password) return;
+    if (!username || !password) return;
     
     setIsLoading(true);
     try {
-      const userCredential = await signInWithEmailAndPassword(auth, email, password);
-      const user = userCredential.user;
+      // 1. Cari user di Firestore berdasarkan username
+      const usersRef = collection(db, "users");
+      const q = query(usersRef, where("username", "==", username.toLowerCase()));
+      const querySnapshot = await getDocs(q);
 
-      // Ambil data Role dari Firestore
-      const userDoc = await getDoc(doc(db, "users", user.uid));
-      const userData = userDoc.data();
+      if (querySnapshot.empty) {
+        throw new Error("Username tidak ditemukan");
+      }
 
-      // Arahkan sesuai Role
-      if (userData?.role === 'admin') router.push('/admin');
-      else if (userData?.role === 'guru') router.push('/guru');
-      else if (userData?.role === 'pengawas') router.push('/pengawas');
+      // 2. Ambil data email dan role dari dokumen user tersebut
+      const userDocData = querySnapshot.docs[0].data();
+      const email = userDocData.email;
+      const role = userDocData.role;
+
+      // 3. Login ke Firebase Auth menggunakan email yang ditemukan
+      await signInWithEmailAndPassword(auth, email, password);
+
+      // 4. Arahkan sesuai Role
+      if (role === 'admin') router.push('/admin');
+      else if (role === 'guru') router.push('/guru');
+      else if (role === 'pengawas') router.push('/pengawas');
       else router.push('/siswa');
       
-    } catch (error) {
-      alert("Login Gagal! Periksa kembali Email dan Password Anda.");
+    } catch (error: any) {
+      console.error(error);
+      alert("Login Gagal! Username atau Password salah.");
     } finally {
       setIsLoading(false);
     }
@@ -43,30 +54,28 @@ export default function LoginPage() {
     <div className="min-h-screen bg-slate-50 flex items-center justify-center p-4">
       <div className="max-w-md w-full bg-white rounded-2xl shadow-xl p-8 space-y-6 border border-slate-100">
         
-        {/* Header */}
         <div className="text-center space-y-2">
           <h1 className="text-3xl font-extrabold text-slate-900 tracking-tight">
             CBT Ujian
           </h1>
           <p className="text-slate-500 text-sm">
-            Silahkan masuk ke akun Anda untuk memulai ujian
+            Masuk dengan Username untuk memulai ujian
           </p>
         </div>
 
-        {/* Form */}
         <form onSubmit={handleLogin} className="space-y-4">
           
-          {/* Email Input */}
+          {/* Username Input */}
           <div className="space-y-1">
-            <label className="text-sm font-medium text-slate-700 ml-1">Email Address</label>
+            <label className="text-sm font-medium text-slate-700 ml-1">Username / NIS</label>
             <div className="relative">
-              <Mail className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400 w-5 h-5" />
+              <User className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400 w-5 h-5" />
               <input 
-                type="email" 
-                placeholder="nama@sekolah.sch.id" 
+                type="text" 
+                placeholder="Masukkan username" 
                 required
-                value={email}
-                onChange={(e) => setEmail(e.target.value)} 
+                value={username}
+                onChange={(e) => setUsername(e.target.value)} 
                 className="w-full pl-10 pr-4 py-3 bg-slate-50 border border-slate-200 rounded-xl focus:ring-2 focus:ring-blue-500 focus:border-transparent outline-none transition-all text-slate-900" 
               />
             </div>
@@ -95,7 +104,6 @@ export default function LoginPage() {
             </div>
           </div>
 
-          {/* Login Button */}
           <button 
             type="submit" 
             disabled={isLoading}
@@ -104,7 +112,7 @@ export default function LoginPage() {
             {isLoading ? (
               <>
                 <Loader2 className="w-5 h-5 animate-spin" />
-                Memproses...
+                Memvalidasi...
               </>
             ) : (
               "Masuk Sekarang"
@@ -113,10 +121,9 @@ export default function LoginPage() {
 
         </form>
 
-        {/* Footer */}
         <div className="text-center pt-2">
           <p className="text-xs text-slate-400">
-            &copy; {new Date().getFullYear()} Aplikasi CBT Ujian - Profesional & Aman
+            &copy; {new Date().getFullYear()} Aplikasi CBT Ujian
           </p>
         </div>
       </div>

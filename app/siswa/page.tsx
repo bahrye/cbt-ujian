@@ -1,80 +1,134 @@
 'use client'
 import { useState, useEffect } from 'react';
+import { db, auth } from '@/lib/firebase';
+import { doc, getDoc, setDoc, updateDoc, onSnapshot } from 'firebase/firestore';
 
-export default function UjianSiswa() {
+export default function HalamanUjianSiswa() {
+  const [isVerified, setIsVerified] = useState(false);
+  const [tokenInput, setTokenInput] = useState('');
+  const [tokenAsli, setTokenAsli] = useState('');
   const [violations, setViolations] = useState(0);
-  const [timeLeft, setTimeLeft] = useState(3600); // 60 Menit dalam detik
+  const [timeLeft, setTimeLeft] = useState(3600); // 60 Menit
 
+  // 1. Ambil token aktif dari pengawas saat halaman dimuat
   useEffect(() => {
-    // Fungsi Deteksi Pindah Tab (Anti-Contek)
-    const handleVisibilityChange = () => {
-      if (document.hidden) {
-        setViolations((prev) => prev + 1);
-        alert("PERINGATAN! Anda terdeteksi meninggalkan halaman ujian.");
-      }
+    const unsub = onSnapshot(doc(db, "settings", "ujian_aktif"), (docSnap) => {
+      if (docSnap.exists()) setTokenAsli(docSnap.data().token);
+    });
+    return () => unsub();
+  }, []);
+
+  // 2. Logika Anti-Contek (Hanya jalan jika sudah verifikasi token)
+  useEffect(() => {
+    if (!isVerified) return;
+
+    const handleViolation = async () => {
+      setViolations((v) => {
+        const newV = v + 1;
+        // Update jumlah pelanggaran ke Firebase agar pengawas tahu
+        const user = auth.currentUser;
+        if (user) {
+          updateDoc(doc(db, "ujian_berjalan", user.uid), {
+            violations: newV
+          });
+        }
+        return newV;
+      });
+      alert("PERINGATAN! Jangan meninggalkan halaman ujian atau membuka tab lain!");
     };
 
-    // Fungsi Deteksi Keluar Jendela Browser
-    const handleBlur = () => {
-      setViolations((prev) => prev + 1);
-      console.log("Siswa keluar dari fokus browser");
-    };
+    const handleVisibility = () => { if (document.hidden) handleViolation(); };
+    const handleBlur = () => { handleViolation(); };
 
-    document.addEventListener("visibilitychange", handleVisibilityChange);
+    document.addEventListener("visibilitychange", handleVisibility);
     window.addEventListener("blur", handleBlur);
 
-    // Timer Ujian
     const timer = setInterval(() => {
       setTimeLeft((prev) => (prev > 0 ? prev - 1 : 0));
     }, 1000);
 
     return () => {
-      document.removeEventListener("visibilitychange", handleVisibilityChange);
+      document.removeEventListener("visibilitychange", handleVisibility);
       window.removeEventListener("blur", handleBlur);
       clearInterval(timer);
     };
-  }, []);
+  }, [isVerified]);
 
-  // Format Waktu MM:SS
-  const formatTime = (seconds: number) => {
-    const mins = Math.floor(seconds / 60);
-    const secs = seconds % 60;
-    return `${mins}:${secs < 10 ? '0' : ''}${secs}`;
+  // 3. Fungsi Verifikasi Token
+  const handleStartUjian = async () => {
+    if (tokenInput.toUpperCase() === tokenAsli) {
+      const user = auth.currentUser;
+      if (user) {
+        // Daftarkan siswa ke tabel monitoring pengawas
+        await setDoc(doc(db, "ujian_berjalan", user.uid), {
+          nama: user.email?.split('@')[0], // Contoh ambil nama dari email
+          violations: 0,
+          status: 'Mengerjakan',
+          mulaiAt: new Date()
+        });
+      }
+      setIsVerified(true);
+    } else {
+      alert("Token yang Anda masukkan salah!");
+    }
   };
 
+  // Tampilan Input Token (Sebelum Ujian)
+  if (!isVerified) {
+    return (
+      <div className="min-h-screen flex items-center justify-center bg-gray-100 p-6">
+        <div className="bg-white p-8 rounded-2xl shadow-xl w-full max-w-md text-center">
+          <h2 className="text-2xl font-bold mb-6">Konfirmasi Ujian</h2>
+          <p className="text-gray-500 mb-6">Silakan masukkan token yang diberikan oleh pengawas.</p>
+          <input 
+            type="text" 
+            placeholder="Ketik Token..." 
+            className="w-full border-2 border-gray-200 p-4 rounded-xl text-center text-2xl font-mono uppercase focus:border-blue-500 outline-none mb-4"
+            onChange={(e) => setTokenInput(e.target.value)}
+          />
+          <button 
+            onClick={handleStartUjian}
+            className="w-full bg-blue-600 text-white py-4 rounded-xl font-bold text-lg hover:bg-blue-700 transition-all"
+          >
+            Mulai Mengerjakan
+          </button>
+        </div>
+      </div>
+    );
+  }
+
+  // Tampilan Soal (Saat Ujian Berlangsung)
   return (
-    <div className="min-h-screen bg-gray-100 p-4">
-      <div className="max-w-4xl mx-auto bg-white rounded-lg shadow-lg p-6">
-        <div className="flex justify-between items-center border-b pb-4 mb-6">
-          <h1 className="text-xl font-bold">Ujian Matematika - Kelas IX</h1>
-          <div className="text-right">
-            <p className="text-sm text-gray-500">Sisa Waktu</p>
-            <p className="text-2xl font-mono font-bold text-red-600">{formatTime(timeLeft)}</p>
-          </div>
+    <div className="min-h-screen bg-white">
+      {/* Header Sticky */}
+      <div className="sticky top-0 bg-blue-700 text-white p-4 shadow-md flex justify-between items-center px-8">
+        <div>
+          <h1 className="font-bold">Ujian Sekolah 2026</h1>
+          <p className="text-xs text-blue-200">Pelanggaran: {violations}</p>
+        </div>
+        <div className="bg-blue-800 px-4 py-2 rounded-lg font-mono text-xl font-bold">
+          {Math.floor(timeLeft / 60)}:{(timeLeft % 60).toString().padStart(2, '0')}
+        </div>
+      </div>
+
+      <div className="max-w-3xl mx-auto p-8">
+        <div className="mb-10 p-6 bg-red-50 border-l-4 border-red-500 rounded">
+          <p className="text-red-700 font-medium">Jangan menutup halaman ini hingga selesai tekan tombol kirim.</p>
         </div>
 
-        <div className="mb-8 p-4 bg-yellow-50 border-l-4 border-yellow-400">
-          <p className="text-sm text-yellow-700 font-semibold">
-            Status Pelanggaran: <span className="text-red-600 text-lg">{violations}</span>
-          </p>
-          <p className="text-xs text-yellow-600">Catatan: Membuka tab baru atau menutup aplikasi akan menambah poin pelanggaran.</p>
+        {/* Contoh Soal */}
+        <div className="text-xl mb-6">1. Apa ibu kota Indonesia saat ini?</div>
+        <div className="space-y-4">
+          {['Jakarta', 'Bandung', 'Surabaya', 'IKN'].map((pilihan) => (
+            <label key={pilihan} className="flex items-center p-4 border rounded-xl hover:bg-blue-50 cursor-pointer transition-all">
+              <input type="radio" name="soal1" className="w-5 h-5 mr-4" />
+              {pilihan}
+            </label>
+          ))}
         </div>
 
-        {/* Area Soal (Contoh) */}
-        <div className="space-y-6">
-          <p className="text-lg font-medium">1. Berapakah hasil dari 15 + 25 x 2?</p>
-          <div className="grid grid-cols-1 gap-3">
-            {['50', '65', '80', '100'].map((opsi) => (
-              <label key={opsi} className="flex items-center p-3 border rounded hover:bg-blue-50 cursor-pointer">
-                <input type="radio" name="soal1" className="mr-3" />
-                {opsi}
-              </label>
-            ))}
-          </div>
-        </div>
-
-        <button className="mt-10 w-full bg-blue-600 text-white py-3 rounded-lg font-bold hover:bg-blue-700">
-          Selesaikan Ujian
+        <button className="mt-12 w-full bg-green-600 text-white py-4 rounded-xl font-bold text-lg hover:bg-green-700">
+          Kirim Jawaban
         </button>
       </div>
     </div>

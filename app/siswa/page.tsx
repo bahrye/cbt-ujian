@@ -75,14 +75,17 @@ export default function HalamanSiswa() {
           const snap = await getDocs(q);
           const allUjian = snap.docs.map(d => ({ id: d.id, ...d.data() }));
           
-          // Filter ujian yang sesuai dengan kelas siswa
+          // Perbaikan Filter: Memastikan kecocokan data
           const filtered = allUjian.filter((u: any) => {
-            // Gunakan trim() untuk hapus spasi dan toUpperCase() agar tidak sensitif huruf besar/kecil
+            // 1. Ambil nilai kelas dari siswa (dari koleksi 'users')
             const kelasSiswa = userData.kelas?.toString().trim().toUpperCase();
-            const kelasUjian = u.kelas?.toString().trim().toUpperCase();
+            
+            // 2. Ambil nilai kelas dari dokumen ujian (cek properti 'kelas' atau 'targetKelas')
+            const kelasUjian = (u.kelas || u.targetKelas)?.toString().trim().toUpperCase();
             
             return kelasUjian === kelasSiswa;
           });
+
           setDaftarUjian(filtered);
         } catch (error) {
           console.error("Gagal mengambil jadwal:", error);

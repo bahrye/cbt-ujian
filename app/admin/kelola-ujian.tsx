@@ -129,7 +129,12 @@ export default function KelolaUjianSection() {
 
     setLoading(true);
     try {
-        const payload = { ...formData, createdAt: new Date() };
+        const payload = {
+          ...formData, // Mengambil semua input dari form
+          // token: generatedToken,
+          createdAt: new Date(),
+          status: 'aktif'
+        };
         
         if (formData.id) {
         const docRef = doc(db, "ujian", formData.id as string); 

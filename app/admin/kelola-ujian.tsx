@@ -130,10 +130,10 @@ export default function KelolaUjianSection() {
     setLoading(true);
     try {
         const payload = {
-          ...formData, // Mengambil semua input dari form
-          // token: generatedToken,
+          ...formData,
+          token: "TOKEN123", // Pastikan field ini diisi, jangan di-comment
           createdAt: new Date(),
-          status: 'aktif'
+          status: formData.status // Menggunakan status dari form
         };
         
         if (formData.id) {

@@ -77,12 +77,14 @@ export default function HalamanSiswa() {
           const snap = await getDocs(q);
           const allUjian = snap.docs.map(d => ({ id: d.id, ...d.data() } as any));
           
-          // Filter Berdasarkan Target Kelas (Array Match)
+          // Ubah logika filter di useEffect Fetch Jadwal
           const filtered = allUjian.filter((ujian) => {
-            const kelasSiswa = userData.kelas.toString().trim().toUpperCase();
-            // Cek apakah properti 'kelas' (array dari Admin) mengandung kelas siswa
+            if (!userData?.kelas || !ujian.kelas) return false;
+            
+            const kelasSiswa = userData.kelas.toString().trim().toLowerCase();
+            // Pastikan membandingkan dengan toLowerCase() di kedua sisi
             return Array.isArray(ujian.kelas) && 
-                   ujian.kelas.some((k: string) => k.trim().toUpperCase() === kelasSiswa);
+                  ujian.kelas.some((k: string) => k.trim().toLowerCase() === kelasSiswa);
           });
 
           setDaftarUjian(filtered);

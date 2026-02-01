@@ -13,16 +13,21 @@ import {
 import dynamic from 'next/dynamic';
 
 // Import modul secara dinamis dan daftarkan ImageResize ke Quill
+// @ts-ignore
 const ReactQuill = dynamic(async () => {
   const { default: RQ } = await import('react-quill-new');
-  // @ts-ignore
   const { Quill } = RQ;
-  
-  // Impor ImageResize secara dinamis di sisi klien
+
+  // SOLUSI ERROR ATTRIBUTOR: Daftarkan Quill ke window secara global
+  if (typeof window !== 'undefined') {
+    (window as any).Quill = Quill;
+  }
+
+  // Impor ImageResize
   // @ts-ignore
   const ImageResize = (await import('quill-image-resize-module-react')).default;
   
-  // Daftarkan modul ke Quill
+  // Daftarkan modul
   Quill.register('modules/imageResize', ImageResize);
   
   return RQ;
@@ -251,15 +256,33 @@ export default function BankSoalSection() {
           <div className="bg-white p-8 md:p-12 rounded-[3rem] border-2 border-slate-100 shadow-sm space-y-8">
             <style>{`
               .ql-editor { min-height: 300px; font-size: 16px; }
-              .ql-container { border-bottom-left-radius: 1.5rem; border-bottom-right-radius: 1.5rem; }
-              .ql-toolbar { border-top-left-radius: 1.5rem; border-top-right-radius: 1.5rem; background: #f8fafc; }
-              /* Memperjelas tampilan toolbar resize gambar */
-              .ql-image-resizer .ql-image-resizer-toolbar { 
-                background: #1e293b !important; 
-                border-radius: 8px !important; 
-                padding: 4px !important;
+              
+              /* Memastikan Resizer dan Toolbar Alignment muncul di atas segalanya */
+              .ql-image-resizer {
+                z-index: 50 !important;
               }
-              .ql-image-resizer-toolbar span { color: white !important; border: 1px solid #475569 !important; margin: 0 2px !important; }
+              
+              .ql-image-resizer-toolbar {
+                background-color: #1e293b !important; /* Biru gelap Slate-800 */
+                border: 1px solid #334155 !important;
+                border-radius: 6px !important;
+                padding: 5px !important;
+                display: flex !important;
+                gap: 4px !important;
+                z-index: 100 !important;
+              }
+
+              .ql-image-resizer-toolbar span {
+                background: #334155 !important;
+                color: white !important;
+                border-radius: 4px !important;
+                padding: 2px 8px !important;
+                cursor: pointer !important;
+              }
+
+              .ql-image-resizer-toolbar span:hover {
+                background: #475569 !important;
+              }
             `}</style>
             
             <div className="grid grid-cols-1 md:grid-cols-3 gap-4">

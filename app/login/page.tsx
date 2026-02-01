@@ -5,7 +5,6 @@ import { signInWithEmailAndPassword } from 'firebase/auth';
 import { doc, getDoc } from 'firebase/firestore';
 import { useRouter } from 'next/navigation';
 import { Eye, EyeOff, Lock, User, Loader2 } from 'lucide-react';
-import { toast } from 'sonner';
 
 export default function LoginPage() {
   const [username, setUsername] = useState('');
@@ -25,7 +24,7 @@ export default function LoginPage() {
       const userSnap = await getDoc(userRef);
 
       if (!userSnap.exists()) {
-        toast.error("Username tidak terdaftar!"); // Ganti alert
+        alert("Username tidak terdaftar!");
         setIsLoading(false);
         return;
       }
@@ -44,7 +43,8 @@ export default function LoginPage() {
       else router.push('/siswa');
       
     } catch (error: any) {
-      toast.error("Login Gagal! Periksa kembali akun Anda."); // Ganti alert
+      console.error(error);
+      alert("Login Gagal! Pastikan Username dan Password benar.");
     } finally {
       setIsLoading(false);
     }

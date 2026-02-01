@@ -69,6 +69,13 @@ export default function KelolaUjianSection() {
     fetchInitialData();
   }, []);
 
+  // Perbaikan: Sinkronisasi daftar mapel saat data kelompok terisi (terutama saat Mode Edit)
+  useEffect(() => {
+    if (formData.kelompokNama) {
+      updateFilteredMapel(formData.kelompokNama);
+    }
+  }, [formData.kelompokNama]);
+
   const fetchInitialData = async () => {
     setLoading(true);
     try {
@@ -100,14 +107,12 @@ export default function KelolaUjianSection() {
     }
 
     try {
-        // Ambil soal yang memiliki nama kelompok tersebut
         const q = query(
         collection(db, "bank_soal"),
         where("namaBankSoal", "==", kelompokNama)
         );
         const snap = await getDocs(q);
 
-        // Ambil daftar mapel unik dari hasil query soal
         const mapels = snap.docs.map(d => d.data().mapel);
         const uniqueMapels = Array.from(new Set(mapels)) as string[];
 
@@ -117,7 +122,6 @@ export default function KelolaUjianSection() {
     }
   };
 
-  // Cari fungsi handleSimpan dan sesuaikan bagian updateDoc
   const handleSimpan = async () => {
     if (!formData.namaUjian || !formData.kelompokId || !formData.mapel) {
         return alert("Mohon lengkapi data utama (Nama, Kelompok, Mapel)");
@@ -127,9 +131,7 @@ export default function KelolaUjianSection() {
     try {
         const payload = { ...formData, createdAt: new Date() };
         
-        // Periksa apakah ini mode edit (ID ada) atau tambah baru
         if (formData.id) {
-        // Gunakan assertion 'as string' atau pastikan ID tidak undefined
         const docRef = doc(db, "ujian", formData.id as string); 
         const { id, ...updateData } = payload;
         await updateDoc(docRef, updateData);
@@ -152,7 +154,6 @@ export default function KelolaUjianSection() {
     setSelectedUjian(ujian);
     setLoading(true);
     try {
-      // Query soal berdasarkan Kelompok (namaBankSoal) dan Mapel
       const q = query(
         collection(db, "bank_soal"),
         where("namaBankSoal", "==", ujian.kelompokNama),
@@ -192,6 +193,7 @@ export default function KelolaUjianSection() {
       tglSelesai: '', durasi: 60, acakSoal: false, acakJawaban: false,
       pengawasIds: [], kelas: [], status: 'nonaktif', soalTerpilih: []
     });
+    setFilteredMapelList([]);
   };
 
   const toggleSelectSoal = (id: string) => {
@@ -289,7 +291,6 @@ export default function KelolaUjianSection() {
 
           <div className="bg-white p-8 md:p-12 rounded-[3rem] border shadow-sm space-y-10">
             <div className="grid grid-cols-1 md:grid-cols-2 gap-8">
-              {/* SISI KIRI: IDENTITAS */}
               <div className="space-y-5">
                 <div className="space-y-2">
                   <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest ml-1">Nama Ujian</label>
@@ -306,7 +307,6 @@ export default function KelolaUjianSection() {
                         const sel = kelompokList.find(k => k.id === e.target.value);
                         const namaKelompok = sel?.nama || '';
                         setFormData({...formData, kelompokId: e.target.value, kelompokNama: namaKelompok});
-                        updateFilteredMapel(namaKelompok); // Jalankan filter mapel di sini
                         }}
                     >
                         <option value="">Pilih Kelompok</option>
@@ -319,7 +319,7 @@ export default function KelolaUjianSection() {
                         className="w-full p-4 bg-slate-50 border-2 border-slate-100 rounded-2xl text-xs font-bold outline-none focus:border-blue-500 transition-all" 
                         value={formData.mapel} 
                         onChange={e => setFormData({...formData, mapel: e.target.value})}
-                        disabled={!formData.kelompokId} // Kunci jika kelompok belum dipilih
+                        disabled={!formData.kelompokId}
                     >
                         <option value="">{formData.kelompokId ? "Pilih Mapel" : "Pilih Kelompok Dulu"}</option>
                         {filteredMapelList.map(m => (
@@ -344,7 +344,6 @@ export default function KelolaUjianSection() {
                 </div>
               </div>
 
-              {/* SISI KANAN: PESERTA & SETTING */}
               <div className="space-y-6">
                 <div className="space-y-2">
                   <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest ml-1">Target Kelas</label>
@@ -417,7 +416,6 @@ export default function KelolaUjianSection() {
         </div>
       )}
 
-      {/* MODAL PEMILIHAN SOAL */}
       {showPilihSoalModal && (
         <div className="fixed inset-0 z-[110] bg-slate-900/60 backdrop-blur-md flex items-center justify-center p-0 md:p-6 animate-in fade-in duration-300">
           <div className="bg-white w-full max-w-5xl md:rounded-[3rem] p-6 md:p-10 shadow-2xl flex flex-col h-full md:max-h-[90vh]">

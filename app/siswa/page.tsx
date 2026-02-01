@@ -44,7 +44,7 @@ export default function HalamanSiswa() {
 
   // --- 1. REAL-TIME CLOCK FOR VALIDATION ---
   useEffect(() => {
-    const timer = setInterval(() => setCurrentTime(new Date()), 10000); // Update tiap 10 detik
+    const timer = setInterval(() => setCurrentTime(new Date()), 10000); 
     return () => clearInterval(timer);
   }, []);
 
@@ -89,15 +89,12 @@ export default function HalamanSiswa() {
           const snap = await getDocs(q);
           const allUjian = snap.docs.map(d => ({ id: d.id, ...d.data() } as any));
           
-          // Filter Berdasarkan Kelas (Mendukung String atau Array)
           const kelasSiswa = userData.kelas.toString().trim().toUpperCase();
           const filtered = allUjian.filter((ujian: any) => {
             if (!ujian.kelas) return false;
-            // Jika format string di database
             if (typeof ujian.kelas === 'string') {
                 return ujian.kelas.trim().toUpperCase() === kelasSiswa;
             }
-            // Jika format array di database
             return Array.isArray(ujian.kelas) && 
                    ujian.kelas.some((k: string) => k.trim().toUpperCase() === kelasSiswa);
           });
@@ -165,14 +162,12 @@ export default function HalamanSiswa() {
     }
   };
 
-  // --- UI RENDER LOGIC ---
   if (!authorized) return (
     <div className="min-h-screen flex items-center justify-center bg-white">
       <Loader2 className="w-10 h-10 animate-spin text-blue-600" />
     </div>
   );
 
-  // VIEW: LEMBAR SOAL (SAAT UJIAN BERJALAN)
   if (isVerified) {
     return (
       <div className="min-h-screen bg-slate-50 pb-20 font-sans">
@@ -209,12 +204,10 @@ export default function HalamanSiswa() {
     );
   }
 
-  // VIEW: DASHBOARD UTAMA
   return (
     <div className="min-h-screen bg-slate-50 flex font-sans overflow-x-hidden">
       {isMobileOpen && <div className="fixed inset-0 bg-slate-900/40 backdrop-blur-sm z-30 lg:hidden" onClick={() => setIsMobileOpen(false)}/>}
 
-      {/* SIDEBAR */}
       <aside className={`fixed inset-y-0 left-0 z-40 bg-white border-r transition-all duration-300 transform
         ${isMobileOpen ? 'translate-x-0 w-72' : '-translate-x-full lg:translate-x-0'}
         ${isSidebarOpen ? 'lg:w-72' : 'lg:w-20'} flex flex-col h-full`}>
@@ -275,12 +268,6 @@ export default function HalamanSiswa() {
               <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
                 {loadingUjian ? (
                   <div className="col-span-full py-20 flex justify-center"><Loader2 className="animate-spin text-blue-600 w-10 h-10"/></div>
-                ) : daftarUjian.length === 0 ? (
-                  <div className="col-span-full bg-white p-20 rounded-[3rem] border border-dashed border-slate-300 text-center space-y-4">
-                    <ClipboardCheck size={60} className="mx-auto text-slate-100"/>
-                    <h3 className="text-slate-400 font-black uppercase tracking-widest">Tidak Ada Ujian Aktif</h3>
-                    <p className="text-xs text-slate-400 italic">Jadwal ujian kelas {userData?.kelas} belum tersedia.</p>
-                  </div>
                 ) : (
                   daftarUjian.map((u) => {
                     const mulai = new Date(u.tglMulai);
@@ -308,24 +295,37 @@ export default function HalamanSiswa() {
                           
                           <h4 className="text-xl font-black text-slate-800 tracking-tighter mb-4 uppercase">{u.namaUjian}</h4>
                           
-                          <div className="space-y-3 mb-8">
-                            <div className="flex items-center gap-3 text-slate-500 text-xs font-bold">
-                                <Calendar size={16} className="text-blue-500"/> 
-                                <span>{mulai.toLocaleString('id-ID', { dateStyle: 'medium', timeStyle: 'short' })}</span>
-                                <span className="text-slate-300">s/d</span>
-                                <span>{selesai.toLocaleString('id-ID', { timeStyle: 'short' })}</span>
+                          <div className="space-y-4 mb-8">
+                            <div className="flex items-start gap-3">
+                                <Calendar size={18} className="text-blue-500 mt-1 shrink-0"/> 
+                                <div className="space-y-1">
+                                    <div>
+                                        <p className="text-[9px] font-black text-slate-400 uppercase tracking-tighter leading-none">Waktu Mulai</p>
+                                        <p className="text-xs font-bold text-slate-700">
+                                            {mulai.toLocaleString('id-ID', { dateStyle: 'medium', timeStyle: 'short' })}
+                                        </p>
+                                    </div>
+                                    <div className="pt-1 border-t border-slate-50">
+                                        <p className="text-[9px] font-black text-slate-400 uppercase tracking-tighter leading-none">Waktu Selesai</p>
+                                        <p className="text-xs font-bold text-slate-700">
+                                            {selesai.toLocaleString('id-ID', { dateStyle: 'medium', timeStyle: 'short' })}
+                                        </p>
+                                    </div>
+                                </div>
                             </div>
                             
                             <div className="flex items-center gap-3 text-slate-500 text-xs font-bold">
-                                <User size={16} className="text-purple-500"/>
+                                <User size={16} className="text-purple-500 shrink-0"/>
                                 <span className="truncate">Pengawas: {namaPengawas}</span>
                             </div>
 
-                            <div className="flex items-center gap-3 text-slate-500 text-xs font-bold">
-                                <Clock size={16} className="text-orange-500"/> Durasi: {u.durasi} Menit
-                            </div>
-                            <div className="flex items-center gap-3 text-slate-500 text-xs font-bold">
-                                <FileText size={16} className="text-green-500"/> {u.soalTerpilih?.length || 0} Butir Soal
+                            <div className="flex items-center gap-6 border-t pt-3">
+                                <div className="flex items-center gap-2 text-slate-500 text-xs font-bold">
+                                    <Clock size={16} className="text-orange-500"/> {u.durasi} Menit
+                                </div>
+                                <div className="flex items-center gap-2 text-slate-500 text-xs font-bold">
+                                    <FileText size={16} className="text-green-500"/> {u.soalTerpilih?.length || 0} Butir Soal
+                                </div>
                             </div>
                           </div>
 

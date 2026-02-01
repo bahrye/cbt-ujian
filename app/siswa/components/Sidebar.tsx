@@ -19,21 +19,18 @@ export default function Sidebar({ activeTab, setActiveTab, userData }: SidebarPr
       </div>
       
       <nav className="flex-1 p-4 space-y-2 mt-4">
-        {[
-          { id: 'jadwal', label: 'Jadwal Ujian', icon: '📅' },
-          { id: 'tata-tertib', label: 'Tata Tertib', icon: '📜' },
-          { id: 'hasil', label: 'Hasil Ujian', icon: '📊' },
-        ].map((item) => (
-          <button 
-            key={item.id}
-            onClick={() => setActiveTab(item.id)}
-            className={`w-full flex items-center gap-3 p-3 rounded-xl transition-all font-medium ${
-              activeTab === item.id ? 'bg-blue-600 text-white shadow-lg shadow-blue-900/20' : 'text-slate-400 hover:bg-slate-800 hover:text-white'
-            }`}
-          >
-            <span className="text-lg">{item.icon}</span> {item.label}
-          </button>
-        ))}
+        <button 
+          onClick={() => setActiveTab('jadwal')}
+          className={`w-full flex items-center gap-3 p-3 rounded-xl transition-all font-medium ${activeTab === 'jadwal' ? 'bg-blue-600 text-white shadow-lg' : 'text-slate-400 hover:bg-slate-800 hover:text-white'}`}
+        >
+          <span className="text-lg">📅</span> Jadwal Ujian
+        </button>
+        <button 
+          onClick={() => setActiveTab('tata-tertib')}
+          className={`w-full flex items-center gap-3 p-3 rounded-xl transition-all font-medium ${activeTab === 'tata-tertib' ? 'bg-blue-600 text-white shadow-lg' : 'text-slate-400 hover:bg-slate-800 hover:text-white'}`}
+        >
+          <span className="text-lg">📜</span> Tata Tertib
+        </button>
       </nav>
 
       <div className="p-6 border-t border-slate-800 text-center">

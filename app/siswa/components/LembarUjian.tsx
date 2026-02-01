@@ -6,7 +6,7 @@ import { doc, getDocs, updateDoc, collection, query, orderBy } from 'firebase/fi
 export default function LembarUjian({ ujian, onFinish }: { ujian: any, onFinish: () => void }) {
   const [daftarSoal, setDaftarSoal] = useState<any[]>([]);
   const [jawabanSiswa, setJawabanSiswa] = useState<{ [key: string]: string }>({});
-  const [timeLeft, setTimeLeft] = useState(ujian.durasi * 60);
+  const [timeLeft, setTimeLeft] = useState(Number(ujian.durasi) * 60);
   const [violations, setViolations] = useState(0);
 
   useEffect(() => {
@@ -62,7 +62,7 @@ export default function LembarUjian({ ujian, onFinish }: { ujian: any, onFinish:
         selesaiAt: new Date(),
         jawaban: jawabanSiswa
       });
-      alert("Ujian Selesai. Data berhasil terkirim!");
+      alert("Ujian Selesai!");
       onFinish();
     }
   };
@@ -82,21 +82,21 @@ export default function LembarUjian({ ujian, onFinish }: { ujian: any, onFinish:
       <div className="max-w-3xl mx-auto py-10 px-4">
         {daftarSoal.map((s, i) => (
           <div key={s.id} className="bg-white p-8 rounded-3xl shadow-sm mb-6 border border-slate-100">
-            <div className="flex gap-4 mb-6">
-              <span className="flex-shrink-0 w-8 h-8 bg-blue-600 text-white rounded-lg flex items-center justify-center font-bold">{i + 1}</span>
-              <p className="text-lg text-slate-800 font-medium leading-relaxed">{s.pertanyaan}</p>
-            </div>
-            <div className="grid gap-3 ml-12">
+            <p className="text-lg text-slate-800 font-medium leading-relaxed mb-6">
+              <span className="inline-block w-8 h-8 bg-blue-600 text-white rounded-lg text-center leading-8 mr-3 font-bold">{i + 1}</span>
+              {s.pertanyaan}
+            </p>
+            <div className="grid gap-3 ml-11">
               {s.opsi.map((o: string) => (
-                <label key={o} className={`flex items-center p-4 border-2 rounded-2xl cursor-pointer transition-all ${jawabanSiswa[s.id] === o ? 'border-blue-500 bg-blue-50/50' : 'border-slate-50 hover:border-slate-200'}`}>
+                <label key={o} className={`flex items-center p-4 border-2 rounded-2xl cursor-pointer transition-all ${jawabanSiswa[s.id] === o ? 'border-blue-500 bg-blue-50' : 'border-slate-50 hover:border-slate-200'}`}>
                   <input type="radio" className="w-5 h-5 mr-4 accent-blue-600" onChange={() => setJawabanSiswa({...jawabanSiswa, [s.id]: o})} checked={jawabanSiswa[s.id] === o} />
-                  <span className="text-slate-700 font-medium">{o}</span>
+                  {o}
                 </label>
               ))}
             </div>
           </div>
         ))}
-        <button onClick={() => submitUjian()} className="w-full bg-blue-600 text-white py-5 rounded-3xl font-black text-xl hover:bg-blue-700 shadow-xl shadow-blue-200 transition-all mt-6">KIRIM JAWABAN SEKARANG</button>
+        <button onClick={() => submitUjian()} className="w-full bg-blue-600 text-white py-5 rounded-3xl font-black text-xl hover:bg-blue-700 shadow-xl transition-all">KIRIM JAWABAN SEKARANG</button>
       </div>
     </div>
   );

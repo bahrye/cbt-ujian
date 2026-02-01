@@ -42,6 +42,9 @@ export default function AdminPage() {
   const [isSidebarOpen, setIsSidebarOpen] = useState(true);
   const [isMobileOpen, setIsMobileOpen] = useState(false);
   const [authorized, setAuthorized] = useState(false);
+  
+  // State Global untuk data kelas
+  const [daftarKelas, setDaftarKelas] = useState<string[]>([]);
   const router = useRouter();
 
   const menuItems = [
@@ -55,26 +58,15 @@ export default function AdminPage() {
     { name: 'Hasil Ujian', icon: <BarChart3 size={20}/> },
   ];
 
+  // Load data kelas saat aplikasi dibuka
   useEffect(() => {
-    const unsubscribe = onAuthStateChanged(auth, async (user: FirebaseUser | null) => {
-      if (user) {
-        try {
-          const userDoc = await getDoc(doc(db, "users_auth", user.uid));
-          const userData = userDoc.data();
-          if (userData?.role === 'admin') {
-            setAuthorized(true);
-          } else {
-            router.push('/login');
-          }
-        } catch (error) {
-          router.push('/login');
-        }
-      } else {
-        router.push('/login');
-      }
-    });
-    return () => unsubscribe();
-  }, [router]);
+    const fetchKelas = async () => {
+      const querySnapshot = await getDocs(collection(db, "classes"));
+      const list = querySnapshot.docs.map(doc => doc.id); // Kita gunakan Document ID sebagai nama kelas
+      setDaftarKelas(list);
+    };
+    if (authorized) fetchKelas();
+  }, [authorized]);
 
   // Fungsi navigasi menu agar sidebar HP otomatis tertutup setelah pilih menu
   const handleMenuClick = (name: string) => {
@@ -193,15 +185,52 @@ export default function AdminPage() {
 
         {/* Content Area */}
         <section className="animate-in fade-in slide-in-from-bottom-4 duration-500 max-w-7xl mx-auto">
+          {/* ROUTING MENU: DASHBOARD */}
           {activeMenu === 'Dashboard' && <DashboardOverview />}
-          {activeMenu === 'Kelola User' && <UserManagementSection />}
-          {activeMenu !== 'Dashboard' && activeMenu !== 'Kelola User' && (
+
+          {/* ROUTING MENU: KELOLA USER */}
+          {activeMenu === 'Kelola User' && (
+            <UserManagementSection daftarKelas={daftarKelas} />
+          )}
+
+          {/* ROUTING MENU: KELOLA KELAS */}
+          {activeMenu === 'Kelola Kelas' && (
+            <ClassManagementSection 
+              daftarKelas={daftarKelas} 
+              refreshKelas={async () => {
+                try {
+                  const snap = await getDocs(collection(db, "classes"));
+                  const list = snap.docs.map(d => d.id);
+                  setDaftarKelas(list);
+                } catch (error) {
+                  console.error("Gagal refresh data kelas:", error);
+                }
+              }} 
+            />
+          )}
+
+          {/* ROUTING MENU: KELOLA MAPEL */}
+          {activeMenu === 'Kelola Mapel' && (
+            <div className="bg-white p-12 md:p-20 rounded-[3rem] border border-dashed border-slate-300 text-center space-y-4">
+              <div className="mx-auto w-16 h-16 md:w-20 md:h-20 bg-slate-50 rounded-full flex items-center justify-center text-slate-300">
+                <BookOpen size={32}/>
+              </div>
+              <h2 className="text-lg md:text-xl font-black text-slate-400 uppercase tracking-widest">Kelola Mata Pelajaran</h2>
+              <p className="text-xs md:text-sm text-slate-400 italic font-medium">Modul ini akan segera diintegrasikan...</p>
+            </div>
+          )}
+
+          {/* ROUTING MENU: DEFAULT (MENU LAINNYA) */}
+          {activeMenu !== 'Dashboard' && 
+          activeMenu !== 'Kelola User' && 
+          activeMenu !== 'Kelola Kelas' && 
+          activeMenu !== 'Kelola Mapel' && (
             <div className="bg-white p-12 md:p-20 rounded-[3rem] border border-dashed border-slate-300 text-center space-y-4">
               <div className="mx-auto w-16 h-16 md:w-20 md:h-20 bg-slate-50 rounded-full flex items-center justify-center text-slate-300">
                 <Database size={32}/>
               </div>
               <h2 className="text-lg md:text-xl font-black text-slate-400 uppercase tracking-widest">Modul {activeMenu}</h2>
-              <p className="text-xs md:text-sm text-slate-400 italic font-medium">Sedang dikembangkan untuk versi mobile...</p>
+              <p className="text-xs md:text-sm text-slate-400 italic font-medium">Fitur sedang dalam tahap pengembangan...</p>
             </div>
           )}
         </section>
@@ -304,7 +333,7 @@ function DashboardOverview() {
 }
 
 // --- SUB KOMPONEN USER MANAGEMENT (Tetap Sama dengan sedikit perbaikan CSS mobile) ---
-function UserManagementSection() {
+function UserManagementSection({ daftarKelas }: { daftarKelas: string[] }) {
   const [users, setUsers] = useState<UserData[]>([]);
   const [loading, setLoading] = useState(true);
   const [isSubmitting, setIsSubmitting] = useState(false);
@@ -318,9 +347,6 @@ function UserManagementSection() {
   const [formData, setFormData] = useState({
     username: '', nama: '', email: '', password: '', role: 'siswa', kelas: '-'
   });
-
-  // Daftar kelas statis (nantinya bisa diambil dari database)
-  const daftarKelas = ['X-IPA-1', 'X-IPA-2', 'XI-IPS-1', 'XI-IPS-2', 'XII-IPA-1'];
 
   useEffect(() => { 
     fetchUsers(); 
@@ -621,6 +647,85 @@ function UserManagementSection() {
           </div>
         </div>
       )}
+    </div>
+  );
+}
+
+function ClassManagementSection({ daftarKelas, refreshKelas }: { daftarKelas: string[], refreshKelas: () => void }) {
+  const [newClassName, setNewClassName] = useState('');
+  const [loading, setLoading] = useState(false);
+
+  const handleAddClass = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!newClassName) return;
+    setLoading(true);
+    try {
+      // Simpan kelas ke koleksi "classes"
+      const classID = newClassName.toUpperCase().trim();
+      await setDoc(doc(db, "classes", classID), { createdAt: new Date() });
+      setNewClassName('');
+      refreshKelas();
+      alert("Kelas berhasil ditambahkan!");
+    } catch (error) {
+      alert("Gagal menambah kelas");
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const handleDeleteClass = async (id: string) => {
+    if (confirm(`Hapus kelas ${id}? Siswa di kelas ini tidak akan terhapus, namun filter akan hilang.`)) {
+      await deleteDoc(doc(db, "classes", id));
+      refreshKelas();
+    }
+  };
+
+  return (
+    <div className="max-w-4xl mx-auto space-y-6 animate-in fade-in duration-500">
+      <div className="bg-white p-8 rounded-[3rem] border shadow-sm space-y-6">
+        <div className="flex items-center gap-3 border-b pb-4">
+          <div className="p-3 bg-blue-600 rounded-2xl text-white shadow-lg shadow-blue-100">
+            <School size={24}/>
+          </div>
+          <div>
+            <h3 className="text-xl font-black text-slate-800 uppercase tracking-tighter">Kelola Data Kelas</h3>
+            <p className="text-[10px] text-slate-400 font-bold uppercase tracking-widest">Manajemen Grup Siswa</p>
+          </div>
+        </div>
+
+        <form onSubmit={handleAddClass} className="flex gap-2">
+          <input 
+            placeholder="Contoh: XII-IPA-1" 
+            className="flex-1 p-4 bg-slate-50 border border-slate-100 rounded-2xl outline-none focus:border-blue-500 font-bold text-slate-700"
+            value={newClassName}
+            onChange={(e) => setNewClassName(e.target.value)}
+          />
+          <button 
+            disabled={loading}
+            className="bg-blue-600 text-white px-8 rounded-2xl font-black text-xs uppercase tracking-widest hover:bg-blue-700 transition-all shadow-lg shadow-blue-100"
+          >
+            {loading ? <Loader2 className="animate-spin"/> : "Tambah"}
+          </button>
+        </form>
+
+        <div className="grid grid-cols-2 md:grid-cols-3 gap-3">
+          {daftarKelas.length === 0 ? (
+            <p className="col-span-full text-center py-10 text-slate-400 italic font-medium">Belum ada data kelas.</p>
+          ) : (
+            daftarKelas.map((kelas) => (
+              <div key={kelas} className="flex justify-between items-center p-4 bg-slate-50 rounded-2xl border border-slate-100 group hover:bg-white hover:shadow-md transition-all">
+                <span className="font-black text-slate-700">{kelas}</span>
+                <button 
+                  onClick={() => handleDeleteClass(kelas)}
+                  className="text-slate-300 hover:text-red-500 transition-colors"
+                >
+                  <Trash2 size={18}/>
+                </button>
+              </div>
+            ))
+          )}
+        </div>
+      </div>
     </div>
   );
 }

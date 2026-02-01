@@ -13,6 +13,7 @@ import {
 import dynamic from 'next/dynamic';
 import * as XLSX from 'xlsx';
 
+// Import modul secara dinamis untuk ReactQuill
 const ReactQuill = dynamic(async () => {
   const { default: RQ } = await import('react-quill-new');
   const { Quill } = RQ;
@@ -45,10 +46,13 @@ export default function BankSoalSection() {
   const [soalList, setSoalList] = useState<any[]>([]);
   const [mapelList, setMapelList] = useState<{id: string, nama: string}[]>([]);
   const [kelompokList, setKelompokList] = useState<{id: string, nama: string}[]>([]); 
+  
   const [filterMapel, setFilterMapel] = useState('all');
   const [searchQuery, setSearchQuery] = useState('');
+
   const [isEditMode, setIsEditMode] = useState(false);
   const [currentId, setCurrentId] = useState('');
+  
   const [namaBankSoal, setNamaBankSoal] = useState('');
   const [tipeSoal, setTipeSoal] = useState('pilihan_ganda');
   const [pertanyaan, setPertanyaan] = useState('');
@@ -61,17 +65,18 @@ export default function BankSoalSection() {
   const [uploading, setUploading] = useState(false);
   const [newKelompok, setNewKelompok] = useState({ nama: '' });
 
+  // Konfigurasi Editor
   const modules = {
     toolbar: [
       [{ 'header': [1, 2, 3, false] }],
       ['bold', 'italic', 'underline', 'strike'],
       [{'list': 'ordered'}, {'list': 'bullet'}],
-      [{ 'align': [] }], // Ini akan mengontrol teks DAN gambar
+      [{ 'align': [] }], 
       ['link', 'image', 'video'],
       ['clean']
     ],
     imageResize: {
-      modules: ['Resize', 'DisplaySize'], // Menghapus 'Toolbar' agar tidak tumpang tindih dengan toolbar utama
+      modules: ['Resize', 'DisplaySize'], 
       handleStyles: {
         backgroundColor: '#3b82f6',
         border: 'none',
@@ -98,26 +103,21 @@ export default function BankSoalSection() {
 
   const downloadTemplate = () => {
     const template = [
-      // PILIHAN GANDA
       { Nama_Bank_Soal: "UAS 2026", Mata_Pelajaran: "IPA", Tipe_Soal: "pilihan_ganda", Pertanyaan: "<p>Apa organ pernapasan ikan?</p>", Opsi_A: "Paru-paru", Opsi_B: "Insang", Opsi_C: "Kulit", Opsi_D: "Trakea", Opsi_E: "Hidung", Jawaban_Benar: "b", Bobot: 5 },
-      { Nama_Bank_Soal: "UAS 2026", Mata_Pelajaran: "IPA", Tipe_Soal: "pilihan_ganda", Pertanyaan: "<p>Planet terbesar di tata surya adalah?</p>", Opsi_A: "Mars", Opsi_B: "Bumi", Opsi_C: "Jupiter", Opsi_D: "Saturnus", Opsi_E: "Venus", Jawaban_Benar: "c", Bobot: 5 },
-      // ISIAN SINGKAT
-      { Nama_Bank_Soal: "UAS 2026", Mata_Pelajaran: "MTK", Tipe_Soal: "isian", Pertanyaan: "<p>Akar kuadrat dari 144 adalah...</p>", Opsi_A: "", Opsi_B: "", Opsi_C: "", Opsi_D: "", Opsi_E: "", Jawaban_Benar: "12", Bobot: 10 },
-      { Nama_Bank_Soal: "UAS 2026", Mata_Pelajaran: "MTK", Tipe_Soal: "isian", Pertanyaan: "<p>Ibu kota Indonesia saat ini adalah...</p>", Opsi_A: "", Opsi_B: "", Opsi_C: "", Opsi_D: "", Opsi_E: "", Jawaban_Benar: "Nusantara", Bobot: 10 },
-      // BENAR SALAH
-      { Nama_Bank_Soal: "UAS 2026", Mata_Pelajaran: "PKN", Tipe_Soal: "benar_salah", Pertanyaan: "<p>Pancasila memiliki 5 sila.</p>", Opsi_A: "", Opsi_B: "", Opsi_C: "", Opsi_D: "", Opsi_E: "", Jawaban_Benar: "benar", Bobot: 5 },
-      { Nama_Bank_Soal: "UAS 2026", Mata_Pelajaran: "PKN", Tipe_Soal: "benar_salah", Pertanyaan: "<p>Matahari terbit dari arah barat.</p>", Opsi_A: "", Opsi_B: "", Opsi_C: "", Opsi_D: "", Opsi_E: "", Jawaban_Benar: "salah", Bobot: 5 },
-      // URAIAN
-      { Nama_Bank_Soal: "UAS 2026", Mata_Pelajaran: "B.Indo", Tipe_Soal: "uraian", Pertanyaan: "<p>Jelaskan pengertian dari fotosintesis!</p>", Opsi_A: "", Opsi_B: "", Opsi_C: "", Opsi_D: "", Opsi_E: "", Jawaban_Benar: "-", Bobot: 20 },
-      { Nama_Bank_Soal: "UAS 2026", Mata_Pelajaran: "B.Indo", Tipe_Soal: "uraian", Pertanyaan: "<p>Sebutkan ciri-ciri makhluk hidup!</p>", Opsi_A: "", Opsi_B: "", Opsi_C: "", Opsi_D: "", Opsi_E: "", Jawaban_Benar: "-", Bobot: 20 },
-      // PENCOCOKAN (Format khusus di Jawaban_Benar)
-      { Nama_Bank_Soal: "UAS 2026", Mata_Pelajaran: "Sejarah", Tipe_Soal: "pencocokan", Pertanyaan: "<p>Cocokkan tokoh dengan perannya!</p>", Opsi_A: "", Opsi_B: "", Opsi_C: "", Opsi_D: "", Opsi_E: "", Jawaban_Benar: '[{"key":"Soekarno","value":"Presiden 1"},{"key":"Hatta","value":"Wapres 1"}]', Bobot: 15 },
-      { Nama_Bank_Soal: "UAS 2026", Mata_Pelajaran: "Sejarah", Tipe_Soal: "pencocokan", Pertanyaan: "<p>Cocokkan negara dengan ibu kotanya!</p>", Opsi_A: "", Opsi_B: "", Opsi_C: "", Opsi_D: "", Opsi_E: "", Jawaban_Benar: '[{"key":"Jepang","value":"Tokyo"},{"key":"Prancis","value":"Paris"}]', Bobot: 15 }
+      { Nama_Bank_Soal: "UAS 2026", Mata_Pelajaran: "IPA", Tipe_Soal: "pilihan_ganda", Pertanyaan: "<p>Planet terbesar adalah?</p>", Opsi_A: "Mars", Opsi_B: "Bumi", Opsi_C: "Jupiter", Opsi_D: "Saturnus", Opsi_E: "Venus", Jawaban_Benar: "c", Bobot: 5 },
+      { Nama_Bank_Soal: "UAS 2026", Mata_Pelajaran: "MTK", Tipe_Soal: "isian", Pertanyaan: "<p>12 x 12 = ...</p>", Opsi_A: "", Opsi_B: "", Opsi_C: "", Opsi_D: "", Opsi_E: "", Jawaban_Benar: "144", Bobot: 10 },
+      { Nama_Bank_Soal: "UAS 2026", Mata_Pelajaran: "MTK", Tipe_Soal: "isian", Pertanyaan: "<p>Ibu kota Indonesia adalah...</p>", Opsi_A: "", Opsi_B: "", Opsi_C: "", Opsi_D: "", Opsi_E: "", Jawaban_Benar: "Nusantara", Bobot: 10 },
+      { Nama_Bank_Soal: "UAS 2026", Mata_Pelajaran: "PKN", Tipe_Soal: "benar_salah", Pertanyaan: "<p>Pancasila ada 5 sila.</p>", Opsi_A: "", Opsi_B: "", Opsi_C: "", Opsi_D: "", Opsi_E: "", Jawaban_Benar: "benar", Bobot: 5 },
+      { Nama_Bank_Soal: "UAS 2026", Mata_Pelajaran: "PKN", Tipe_Soal: "benar_salah", Pertanyaan: "<p>Matahari terbit di Utara.</p>", Opsi_A: "", Opsi_B: "", Opsi_C: "", Opsi_D: "", Opsi_E: "", Jawaban_Benar: "salah", Bobot: 5 },
+      { Nama_Bank_Soal: "UAS 2026", Mata_Pelajaran: "BIN", Tipe_Soal: "uraian", Pertanyaan: "<p>Jelaskan makna Proklamasi!</p>", Opsi_A: "", Opsi_B: "", Opsi_C: "", Opsi_D: "", Opsi_E: "", Jawaban_Benar: "-", Bobot: 20 },
+      { Nama_Bank_Soal: "UAS 2026", Mata_Pelajaran: "BIN", Tipe_Soal: "uraian", Pertanyaan: "<p>Sebutkan 3 jenis hewan mamalia!</p>", Opsi_A: "", Opsi_B: "", Opsi_C: "", Opsi_D: "", Opsi_E: "", Jawaban_Benar: "-", Bobot: 20 },
+      { Nama_Bank_Soal: "UAS 2026", Mata_Pelajaran: "IPS", Tipe_Soal: "pencocokan", Pertanyaan: "<p>Cocokkan Negara & Ibu Kota</p>", Opsi_A: "", Opsi_B: "", Opsi_C: "", Opsi_D: "", Opsi_E: "", Jawaban_Benar: '[{"key":"Indonesia","value":"Jakarta"},{"key":"Jepang","value":"Tokyo"}]', Bobot: 15 },
+      { Nama_Bank_Soal: "UAS 2026", Mata_Pelajaran: "IPS", Tipe_Soal: "pencocokan", Pertanyaan: "<p>Pasangkan Tokoh & Julukan</p>", Opsi_A: "", Opsi_B: "", Opsi_C: "", Opsi_D: "", Opsi_E: "", Jawaban_Benar: '[{"key":"Soekarno","value":"Proklamator"},{"key":"Ki Hajar","value":"Bapak Pendidikan"}]', Bobot: 15 }
     ];
     const ws = XLSX.utils.json_to_sheet(template);
     const wb = XLSX.utils.book_new();
-    XLSX.utils.book_append_sheet(wb, ws, "Contoh Soal");
-    XLSX.writeFile(wb, "Template_CBT_Lengkap.xlsx");
+    XLSX.utils.book_append_sheet(wb, ws, "Template");
+    XLSX.writeFile(wb, "Template_Bank_Soal.xlsx");
   };
 
   const handleImportExcel = async (e: any) => {
@@ -134,21 +134,21 @@ export default function BankSoalSection() {
         const batch = writeBatch(db);
         data.forEach((item: any) => {
           const docRef = doc(collection(db, "bank_soal"));
+          const tipe = String(item.Tipe_Soal || 'pilihan_ganda').toLowerCase().trim();
           batch.set(docRef, {
             namaBankSoal: item.Nama_Bank_Soal,
             mapel: item.Mata_Pelajaran,
-            tipe: item.Tipe_Soal,
+            tipe: tipe,
             pertanyaan: item.Pertanyaan,
-            opsi: { a: String(item.Opsi_A||''), b: String(item.Opsi_B||''), c: String(item.Opsi_C||''), d: String(item.Opsi_D||''), e: String(item.Opsi_E||'') },
+            opsi: tipe === 'pilihan_ganda' ? { a: String(item.Opsi_A||''), b: String(item.Opsi_B||''), c: String(item.Opsi_C||''), d: String(item.Opsi_D||''), e: String(item.Opsi_E||'') } : null,
             jawabanBenar: String(item.Jawaban_Benar),
             bobot: Number(item.Bobot || 1),
-            createdAt: new Date(),
-            updatedAt: new Date()
+            createdAt: new Date(), updatedAt: new Date()
           });
         });
         await batch.commit();
         alert("Import Berhasil!");
-      } catch (err) { alert("Gagal import!"); } finally { setLoading(false); }
+      } catch (err) { alert("Gagal Import!"); } finally { setLoading(false); e.target.value = ''; }
     };
     reader.readAsBinaryString(file);
   };
@@ -170,21 +170,21 @@ export default function BankSoalSection() {
     } catch (error) { alert("Gagal!"); } finally { setLoading(false); }
   };
 
-  const resetForm = () => {
-    setIsEditMode(false); setCurrentId(''); setPertanyaan(''); setMedia(null);
-    setOpsi({ a: '', b: '', c: '', d: '', e: '' }); setJawabanBenar('');
-    setPairs([{ id: Date.now(), key: '', value: '' }]); setBobot(1);
-    setNamaBankSoal(''); setSelectedMapel('');
-  };
-
   const handleEdit = (soal: any) => {
     setIsEditMode(true); setCurrentId(soal.id); setNamaBankSoal(soal.namaBankSoal || '');
     setPertanyaan(soal.pertanyaan); setTipeSoal(soal.tipe || 'pilihan_ganda');
     setSelectedMapel(soal.mapel); setBobot(soal.bobot); setMedia(soal.media);
-    if (soal.tipe === 'pilihan_ganda') setOpsi(soal.opsi);
+    if (soal.tipe === 'pilihan_ganda') setOpsi(soal.opsi || { a: '', b: '', c: '', d: '', e: '' });
     if (soal.tipe === 'pencocokan') { try { setPairs(JSON.parse(soal.jawabanBenar)); } catch { setPairs([{ id: Date.now(), key: '', value: '' }]); } }
     else setJawabanBenar(soal.jawabanBenar);
     setView('form');
+  };
+
+  const resetForm = () => {
+    setIsEditMode(false); setCurrentId(''); setPertanyaan(''); setMedia(null);
+    setOpsi({ a: '', b: '', c: '', d: '', e: '' }); setJawabanBenar('');
+    setPairs([{ id: Date.now(), key: '', value: '' }]); setBobot(1);
+    setNamaBankSoal(''); setSelectedMapel(''); setTipeSoal('pilihan_ganda');
   };
 
   const filteredSoal = soalList.filter(s => {
@@ -197,7 +197,7 @@ export default function BankSoalSection() {
     <div className="max-w-7xl mx-auto pb-20 animate-in fade-in duration-500">
       <style>{`
         .ql-editor { min-height: 400px !important; font-size: 16px; }
-        .ql-editor img { cursor: pointer; display: inline-block; margin: 10px; transition: all 0.2s; }
+        .ql-editor img { cursor: pointer; display: inline-block; margin: 10px; }
         .ql-align-center { text-align: center; }
         .ql-align-right { text-align: right; }
         .ql-align-left { text-align: left; }
@@ -213,25 +213,16 @@ export default function BankSoalSection() {
               <h2 className="text-xl font-black text-slate-800 uppercase tracking-tighter">Bank Soal System</h2>
               <p className="text-[10px] text-slate-400 font-bold uppercase tracking-widest">{soalList.length} Soal terdaftar</p>
             </div>
-            <div className="flex flex-wrap gap-2 w-full md:w-auto">
-              <button onClick={downloadTemplate} className="flex items-center gap-2 bg-emerald-50 text-emerald-600 px-4 py-3 rounded-2xl font-bold text-xs uppercase hover:bg-emerald-100">
-                <Download size={18}/> Template Lengkap
-              </button>
-              <label className="cursor-pointer flex items-center gap-2 bg-amber-50 text-amber-600 px-4 py-3 rounded-2xl font-bold text-xs uppercase hover:bg-amber-100">
-                <FileUp size={18}/> Import Excel
-                <input type="file" hidden accept=".xlsx, .xls" onChange={handleImportExcel} />
-              </label>
-              <button onClick={() => setShowKelompokModal(true)} className="flex items-center gap-2 bg-slate-100 text-slate-600 px-4 py-3 rounded-2xl font-bold text-xs uppercase">
-                <FolderPlus size={18}/> Kelompok
-              </button>
-              <button onClick={() => { resetForm(); setView('form'); }} className="flex items-center gap-2 bg-blue-600 text-white px-6 py-3 rounded-2xl font-black text-xs uppercase tracking-widest hover:bg-blue-700">
-                <Plus size={18}/> Buat Soal
-              </button>
+            <div className="flex flex-wrap gap-2">
+              <button onClick={downloadTemplate} className="flex items-center gap-2 bg-emerald-50 text-emerald-600 px-4 py-3 rounded-2xl font-bold text-xs uppercase hover:bg-emerald-100 transition-all"><Download size={18}/> Template</button>
+              <label className="cursor-pointer flex items-center gap-2 bg-amber-50 text-amber-600 px-4 py-3 rounded-2xl font-bold text-xs uppercase hover:bg-amber-100 transition-all"><FileUp size={18}/> Import<input type="file" hidden accept=".xlsx, .xls" onChange={handleImportExcel} /></label>
+              <button onClick={() => setShowKelompokModal(true)} className="flex items-center gap-2 bg-slate-100 text-slate-600 px-4 py-3 rounded-2xl font-bold text-xs uppercase hover:bg-slate-200 transition-all"><FolderPlus size={18}/> Kelompok</button>
+              <button onClick={() => { resetForm(); setView('form'); }} className="flex items-center gap-2 bg-blue-600 text-white px-6 py-3 rounded-2xl font-black text-xs uppercase tracking-widest hover:bg-blue-700 shadow-lg shadow-blue-200 transition-all"><Plus size={18}/> Buat Soal</button>
             </div>
           </div>
 
           <div className="bg-white p-4 rounded-3xl border shadow-sm flex flex-col md:flex-row gap-3">
-            <div className="relative flex-1">
+             <div className="relative flex-1">
               <Search size={18} className="absolute left-4 top-1/2 -translate-y-1/2 text-slate-400" />
               <input placeholder="Cari soal..." className="w-full pl-12 pr-4 py-4 bg-slate-50 border-2 border-slate-100 rounded-2xl text-sm font-bold outline-none" value={searchQuery} onChange={(e) => setSearchQuery(e.target.value)} />
             </div>
@@ -243,16 +234,14 @@ export default function BankSoalSection() {
                 <div className="flex justify-between items-start mb-4">
                   <div className="space-y-1">
                     <span className="text-[9px] font-black text-blue-600 uppercase tracking-widest px-2 py-1 bg-blue-50 rounded-lg">{s.namaBankSoal}</span>
-                    <div className="flex gap-2">
-                      <span className="text-[8px] font-bold text-slate-400 uppercase">{s.mapel}</span>
-                    </div>
+                    <div className="text-[8px] font-bold text-slate-400 uppercase">{s.mapel} • {s.tipe?.replace('_', ' ')}</div>
                   </div>
-                  <div className="flex gap-1 opacity-0 group-hover:opacity-100">
-                    <button onClick={() => handleEdit(s)} className="p-2.5 bg-orange-50 text-orange-500 rounded-xl hover:bg-orange-500 hover:text-white"><Edit3 size={16}/></button>
-                    <button onClick={() => confirm('Hapus?') && deleteDoc(doc(db, "bank_soal", s.id))} className="p-2.5 bg-red-50 text-red-500 rounded-xl hover:bg-red-500 hover:text-white"><Trash2 size={16}/></button>
+                  <div className="flex gap-1 opacity-0 group-hover:opacity-100 transition-opacity">
+                    <button onClick={() => handleEdit(s)} className="p-2 bg-orange-50 text-orange-500 rounded-xl hover:bg-orange-500 hover:text-white"><Edit3 size={16}/></button>
+                    <button onClick={() => confirm('Hapus?') && deleteDoc(doc(db, "bank_soal", s.id))} className="p-2 bg-red-50 text-red-500 rounded-xl hover:bg-red-500 hover:text-white"><Trash2 size={16}/></button>
                   </div>
                 </div>
-                <div className="text-sm font-bold text-slate-700 line-clamp-3 prose-sm" dangerouslySetInnerHTML={{ __html: s.pertanyaan }} />
+                <div className="text-sm font-bold text-slate-700 line-clamp-3" dangerouslySetInnerHTML={{ __html: s.pertanyaan }} />
               </div>
             ))}
           </div>
@@ -262,10 +251,8 @@ export default function BankSoalSection() {
       {view === 'form' && (
         <div className="max-w-4xl mx-auto space-y-6">
           <div className="bg-white p-6 rounded-[2.5rem] border shadow-sm flex justify-between items-center">
-             <button onClick={() => setView('list')} className="p-3 bg-slate-50 text-slate-600 rounded-2xl flex items-center gap-2 font-bold text-xs uppercase">
-                <ArrowLeft size={18}/> Kembali
-             </button>
-             <h2 className="text-sm font-black text-slate-800 uppercase tracking-widest">{isEditMode ? 'Editor Mode' : 'Pembuat Soal'}</h2>
+             <button onClick={() => setView('list')} className="p-3 bg-slate-50 text-slate-600 rounded-2xl flex items-center gap-2 font-bold text-xs uppercase"><ArrowLeft size={18}/> Kembali</button>
+             <h2 className="text-sm font-black text-slate-800 uppercase tracking-widest">{isEditMode ? 'Edit Soal' : 'Buat Soal'}</h2>
           </div>
 
           <div className="bg-white p-8 md:p-12 rounded-[3rem] border-2 border-slate-100 shadow-sm space-y-8">
@@ -286,7 +273,7 @@ export default function BankSoalSection() {
               </div>
               <div className="space-y-2">
                 <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest ml-1">Tipe Soal</label>
-                <select className="w-full p-4 bg-blue-600 text-white rounded-2xl text-xs font-bold outline-none" value={tipeSoal} onChange={(e) => setTipeSoal(e.target.value)}>
+                <select className="w-full p-4 bg-blue-600 text-white rounded-2xl text-xs font-bold outline-none" value={tipeSoal} onChange={(e) => {setTipeSoal(e.target.value); setJawabanBenar('');}}>
                   <option value="pilihan_ganda">Pilihan Ganda</option>
                   <option value="isian">Isian Singkat</option>
                   <option value="uraian">Uraian / Essay</option>
@@ -299,26 +286,86 @@ export default function BankSoalSection() {
             <div className="space-y-2">
               <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest ml-1">Pertanyaan</label>
               <div className="bg-white rounded-[2rem] border-2 border-slate-200 overflow-hidden">
-                <ReactQuill 
-                  theme="snow" 
-                  value={pertanyaan} 
-                  onChange={setPertanyaan} 
-                  modules={modules} 
-                  placeholder="Cara memindahkan gambar: Klik gambar, lalu pilih icon Alignment di menu editor atas." 
-                />
+                <ReactQuill theme="snow" value={pertanyaan} onChange={setPertanyaan} modules={modules} placeholder="Klik gambar lalu pilih icon Alignment di atas untuk memindahkan posisi gambar." />
               </div>
             </div>
 
-            {/* Bagian Media, Konfigurasi Jawaban, dan Tombol Simpan tetap seperti sebelumnya */}
+            <div className="space-y-4 pt-6 border-t-2 border-slate-100">
+              <h4 className="text-[10px] font-black text-slate-400 uppercase tracking-widest ml-1">Konfigurasi Jawaban</h4>
+              
+              {tipeSoal === 'pilihan_ganda' && (
+                <div className="grid grid-cols-1 gap-3 animate-in fade-in">
+                  {['a', 'b', 'c', 'd', 'e'].map(l => (
+                    <div key={l} className="flex gap-4 items-center">
+                       <span className="w-8 h-8 rounded-full bg-slate-100 flex items-center justify-center text-[10px] font-black text-slate-400 uppercase border border-slate-200">{l}</span>
+                       <input placeholder={`Opsi ${l.toUpperCase()}`} className="flex-1 p-4 bg-slate-50 border-2 border-slate-200 rounded-2xl text-sm font-bold outline-none focus:border-blue-400" value={(opsi as any)[l]} onChange={(e) => setOpsi({...opsi, [l]: e.target.value})} />
+                    </div>
+                  ))}
+                  <div className="mt-4 p-4 bg-green-50 rounded-2xl border-2 border-green-100">
+                    <label className="text-[10px] font-black text-green-600 uppercase tracking-widest ml-1">Pilih Kunci Jawaban</label>
+                    <div className="flex gap-2 mt-2">
+                      {['a','b','c','d','e'].map(l => (
+                        <button key={l} type="button" onClick={() => setJawabanBenar(l)} className={`flex-1 py-4 rounded-xl font-black uppercase text-xs border-2 transition-all ${jawabanBenar === l ? 'bg-green-600 border-green-600 text-white shadow-lg shadow-green-100' : 'bg-white text-slate-300 border-slate-200 hover:border-green-200'}`}>{l}</button>
+                      ))}
+                    </div>
+                  </div>
+                </div>
+              )}
+
+              {tipeSoal === 'benar_salah' && (
+                <div className="flex gap-4 animate-in zoom-in">
+                  {['benar', 'salah'].map(v => (
+                    <button key={v} type="button" onClick={() => setJawabanBenar(v)} className={`flex-1 py-6 rounded-[2rem] font-black uppercase text-sm border-4 transition-all ${jawabanBenar === v ? 'bg-green-600 border-green-600 text-white shadow-xl' : 'bg-white text-slate-200 border-slate-100'}`}>{v}</button>
+                  ))}
+                </div>
+              )}
+
+              {(tipeSoal === 'isian' || tipeSoal === 'uraian') && (
+                <div className="space-y-2 animate-in slide-in-from-left-2">
+                  <label className="text-[10px] font-black text-green-600 uppercase tracking-widest ml-1">Kunci Jawaban Teks</label>
+                  <input placeholder="Ketik kunci jawaban..." className="w-full p-5 bg-green-50 border-2 border-green-100 rounded-2xl text-sm font-bold text-green-700 outline-none focus:border-green-400" value={jawabanBenar} onChange={(e) => setJawabanBenar(e.target.value)} />
+                </div>
+              )}
+
+              {tipeSoal === 'pencocokan' && (
+                <div className="grid grid-cols-1 gap-3 animate-in fade-in">
+                  {pairs.map((p, idx) => (
+                    <div key={p.id} className="flex gap-3 items-center">
+                      <input placeholder="Kiri" className="flex-1 p-4 bg-slate-50 border-2 border-slate-200 rounded-2xl text-sm font-bold" value={p.key} onChange={(e) => { const n = [...pairs]; n[idx].key = e.target.value; setPairs(n); }} />
+                      <div className="text-slate-300">→</div>
+                      <input placeholder="Kanan" className="flex-1 p-4 bg-slate-50 border-2 border-slate-200 rounded-2xl text-sm font-bold" value={p.value} onChange={(e) => { const n = [...pairs]; n[idx].value = e.target.value; setPairs(n); }} />
+                      <button onClick={() => setPairs(pairs.filter(i => i.id !== p.id))} className="p-2 text-red-400"><Trash2 size={18}/></button>
+                    </div>
+                  ))}
+                  <button type="button" onClick={() => setPairs([...pairs, {id: Date.now(), key: '', value: ''}])} className="w-full py-4 border-2 border-dashed border-slate-300 rounded-2xl text-xs font-black text-slate-400 uppercase">+ Tambah Pasangan</button>
+                </div>
+              )}
+            </div>
+
             <div className="flex gap-4 items-end pt-10">
               <div className="w-32">
-                <label className="text-[10px] font-black text-slate-400 uppercase ml-1">Bobot Skor</label>
+                <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest ml-1">Bobot Skor</label>
                 <input type="number" className="w-full p-5 bg-slate-50 rounded-2xl mt-2 font-black text-center text-lg border-2 border-slate-200 outline-none" value={bobot} onChange={(e) => setBobot(Number(e.target.value))} />
               </div>
-              <button onClick={simpanSoal} disabled={loading} className={`flex-1 py-5 rounded-[2rem] font-black text-xs uppercase tracking-widest text-white shadow-2xl transition-all ${isEditMode ? 'bg-orange-500' : 'bg-blue-600'}`}>
+              <button onClick={simpanSoal} disabled={loading} className={`flex-1 py-5 rounded-[2rem] font-black text-xs uppercase tracking-widest text-white shadow-2xl transition-all active:scale-95 ${isEditMode ? 'bg-orange-500 shadow-orange-200' : 'bg-blue-600 shadow-blue-200'}`}>
                 {loading ? <Loader2 className="animate-spin mx-auto"/> : isEditMode ? "Perbarui Soal" : "Simpan Soal"}
               </button>
             </div>
+          </div>
+        </div>
+      )}
+
+      {showKelompokModal && (
+        <div className="fixed inset-0 z-[100] flex items-center justify-center p-4 bg-slate-900/60 backdrop-blur-md animate-in fade-in duration-300">
+          <div className="bg-white w-full max-w-md rounded-[3rem] p-10 shadow-2xl space-y-6 border-2 border-slate-100">
+            <div className="flex justify-between items-center">
+              <h3 className="text-xl font-black text-slate-800 uppercase tracking-tighter">Kelompok Baru</h3>
+              <button onClick={() => setShowKelompokModal(false)} className="p-2 bg-slate-100 rounded-full hover:text-red-500 transition-all"><X size={20}/></button>
+            </div>
+            <div className="space-y-4">
+               <input placeholder="Misal: UAS Ganjil 2024" className="w-full p-4 bg-slate-50 border-2 border-slate-200 rounded-2xl text-sm font-bold outline-none" value={newKelompok.nama} onChange={(e) => setNewKelompok({...newKelompok, nama: e.target.value})} />
+            </div>
+            <button onClick={async () => { if (!newKelompok.nama) return; await addDoc(collection(db, "kelompok_soal"), newKelompok); setNewKelompok({ nama: '' }); setShowKelompokModal(false); }} className="w-full bg-slate-900 text-white py-5 rounded-[2rem] font-black text-xs uppercase hover:bg-black transition-all shadow-xl">Simpan Kelompok</button>
           </div>
         </div>
       )}

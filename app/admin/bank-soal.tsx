@@ -8,24 +8,30 @@ import {
 import { ref, uploadBytesResumable, getDownloadURL } from 'firebase/storage';
 import { 
   Plus, Image as ImageIcon, Music, Save, Trash2, 
-  HelpCircle, Loader2, FileText, CheckCircle2, Edit3, Search, X
+  HelpCircle, Loader2, FileText, CheckCircle2, Edit3, Search, X, ArrowLeft, FolderPlus
 } from 'lucide-react';
 import dynamic from 'next/dynamic';
 
 const ReactQuill = dynamic(() => import('react-quill-new'), { 
   ssr: false,
-  loading: () => <div className="h-40 bg-slate-50 animate-pulse rounded-2xl" />
+  loading: () => <div className="h-64 bg-slate-50 animate-pulse rounded-2xl" />
 });
 import 'react-quill-new/dist/quill.snow.css';
 
 export default function BankSoalSection() {
+  const [view, setView] = useState<'list' | 'form'>('list');
+  const [showKelompokModal, setShowKelompokModal] = useState(false);
   const [loading, setLoading] = useState(false);
   const [soalList, setSoalList] = useState<any[]>([]);
   const [mapelList, setMapelList] = useState<{id: string, nama: string}[]>([]);
+  const [kelompokList, setKelompokList] = useState<{id: string, nama: string, mapel: string}[]>([]);
+  
   const [filterMapel, setFilterMapel] = useState('all');
   const [searchQuery, setSearchQuery] = useState('');
+
   const [isEditMode, setIsEditMode] = useState(false);
   const [currentId, setCurrentId] = useState('');
+  
   const [namaBankSoal, setNamaBankSoal] = useState('');
   const [tipeSoal, setTipeSoal] = useState('pilihan_ganda');
   const [pertanyaan, setPertanyaan] = useState('');
@@ -37,12 +43,15 @@ export default function BankSoalSection() {
   const [media, setMedia] = useState<{type: string, url: string} | null>(null);
   const [uploading, setUploading] = useState(false);
 
+  const [newKelompok, setNewKelompok] = useState({ nama: '', mapel: '' });
+
   const modules = {
     toolbar: [
-      [{ 'header': [1, 2, false] }],
+      [{ 'header': [1, 2, 3, false] }],
       ['bold', 'italic', 'underline', 'strike'],
       [{'list': 'ordered'}, {'list': 'bullet'}],
       [{ 'align': [] }],
+      ['link', 'image', 'video'],
       ['clean']
     ],
   };
@@ -51,14 +60,30 @@ export default function BankSoalSection() {
     getDocs(query(collection(db, "mapel"), orderBy("nama", "asc"))).then(snap => {
       setMapelList(snap.docs.map(d => ({ id: d.id, nama: d.data().nama })));
     });
-    const unsubscribe = onSnapshot(
-      query(collection(db, "bank_soal"), orderBy("createdAt", "desc")), 
-      (snapshot) => {
-        setSoalList(snapshot.docs.map(d => ({ id: d.id, ...d.data() })));
-      }
-    );
-    return () => unsubscribe();
+
+    const unsubSoal = onSnapshot(query(collection(db, "bank_soal"), orderBy("createdAt", "desc")), (snap) => {
+      setSoalList(snap.docs.map(d => ({ id: d.id, ...d.data() })));
+    });
+
+    const unsubKelompok = onSnapshot(query(collection(db, "kelompok_soal"), orderBy("nama", "asc")), (snap) => {
+      setKelompokList(snap.docs.map(d => ({ id: d.id, ...d.data() } as any)));
+    });
+
+    return () => { unsubSoal(); unsubKelompok(); };
   }, []);
+
+  const handleKelompokChange = (nama: string) => {
+    setNamaBankSoal(nama);
+    const found = kelompokList.find(k => k.nama === nama);
+    if (found) setSelectedMapel(found.mapel);
+  };
+
+  const tambahKelompok = async () => {
+    if (!newKelompok.nama || !newKelompok.mapel) return alert("Isi nama kelompok dan mapel!");
+    await addDoc(collection(db, "kelompok_soal"), newKelompok);
+    setNewKelompok({ nama: '', mapel: '' });
+    setShowKelompokModal(false);
+  };
 
   const handleUpload = async (e: any, type: 'image' | 'audio') => {
     const file = e.target.files?.[0];
@@ -78,12 +103,14 @@ export default function BankSoalSection() {
     let finalKunci = jawabanBenar;
     if (tipeSoal === 'pencocokan') finalKunci = JSON.stringify(pairs);
     if (!pertanyaan || !selectedMapel || !namaBankSoal) return alert("Lengkapi data!");
+    
     setLoading(true);
     const payload = {
       namaBankSoal, pertanyaan, mapel: selectedMapel, tipe: tipeSoal,
       bobot: Number(bobot), opsi: tipeSoal === 'pilihan_ganda' ? opsi : null,
       jawabanBenar: finalKunci, media, updatedAt: new Date()
     };
+
     try {
       if (isEditMode) {
         await updateDoc(doc(db, "bank_soal", currentId), payload);
@@ -91,7 +118,7 @@ export default function BankSoalSection() {
         await addDoc(collection(db, "bank_soal"), { ...payload, createdAt: new Date() });
       }
       resetForm();
-      alert("Berhasil!");
+      setView('list');
     } catch (error) { alert("Gagal!"); } finally { setLoading(false); }
   };
 
@@ -107,7 +134,7 @@ export default function BankSoalSection() {
     if (soal.tipe === 'pilihan_ganda') setOpsi(soal.opsi);
     if (soal.tipe === 'pencocokan') setPairs(JSON.parse(soal.jawabanBenar));
     else setJawabanBenar(soal.jawabanBenar);
-    window.scrollTo({ top: 0, behavior: 'smooth' });
+    setView('form');
   };
 
   const resetForm = () => {
@@ -119,6 +146,8 @@ export default function BankSoalSection() {
     setJawabanBenar('');
     setPairs([{ id: Date.now(), key: '', value: '' }]);
     setBobot(1);
+    setNamaBankSoal('');
+    setSelectedMapel('');
   };
 
   const filteredSoal = soalList.filter(s => {
@@ -129,131 +158,228 @@ export default function BankSoalSection() {
   });
 
   return (
-    <div className="grid grid-cols-1 lg:grid-cols-12 gap-8 pb-20">
-      <div className="lg:col-span-5 space-y-6">
-        <div className="bg-white p-6 rounded-[2.5rem] border shadow-sm space-y-4 sticky top-24">
-          <div className="flex justify-between items-center">
-            <h3 className="font-black text-slate-800 uppercase text-xs tracking-widest flex items-center gap-2">
-              {isEditMode ? <Edit3 size={18} className="text-orange-500"/> : <Plus size={18} className="text-blue-600"/>}
-              {isEditMode ? 'Edit Soal' : 'Buat Soal'}
-            </h3>
-            {isEditMode && <button onClick={resetForm} className="text-[10px] font-bold text-red-500 uppercase">Batal</button>}
+    <div className="max-w-7xl mx-auto pb-20 animate-in fade-in duration-500">
+      
+      {/* --- VIEW: LIST DAFTAR SOAL --- */}
+      {view === 'list' && (
+        <div className="space-y-6">
+          <div className="flex flex-col md:flex-row justify-between items-start md:items-center gap-4 bg-white p-6 rounded-[2.5rem] border shadow-sm">
+            <div>
+              <h2 className="text-xl font-black text-slate-800 uppercase tracking-tighter">Bank Soal System</h2>
+              <p className="text-[10px] text-slate-400 font-bold uppercase tracking-widest">{soalList.length} Soal terdaftar</p>
+            </div>
+            <div className="flex gap-2 w-full md:w-auto">
+              <button onClick={() => setShowKelompokModal(true)} className="flex-1 md:flex-none flex items-center justify-center gap-2 bg-slate-100 text-slate-600 px-5 py-3 rounded-2xl font-bold text-xs uppercase hover:bg-slate-200 transition-all">
+                <FolderPlus size={18}/> Kelompok
+              </button>
+              <button onClick={() => { resetForm(); setView('form'); }} className="flex-1 md:flex-none flex items-center justify-center gap-2 bg-blue-600 text-white px-6 py-3 rounded-2xl font-black text-xs uppercase tracking-widest hover:bg-blue-700 shadow-lg shadow-blue-200 transition-all">
+                <Plus size={18}/> Buat Soal
+              </button>
+            </div>
           </div>
-          <input placeholder="Nama Kelompok Bank Soal" className="w-full p-4 bg-slate-50 border-none rounded-2xl text-xs font-bold outline-none ring-2 ring-transparent focus:ring-blue-100" value={namaBankSoal} onChange={(e) => setNamaBankSoal(e.target.value)} />
-          <div className="grid grid-cols-2 gap-3">
-            <select className="p-4 bg-slate-50 border-none rounded-2xl text-xs font-bold outline-none" value={selectedMapel} onChange={(e) => setSelectedMapel(e.target.value)}>
-              <option value="">Mapel</option>
+
+          <div className="bg-white p-4 rounded-3xl border shadow-sm flex flex-col md:flex-row gap-3">
+            <div className="relative flex-1">
+              <Search size={18} className="absolute left-4 top-1/2 -translate-y-1/2 text-slate-400" />
+              <input placeholder="Cari soal atau nama bank..." className="w-full pl-12 pr-4 py-4 bg-slate-50 border-none rounded-2xl text-sm font-bold outline-none focus:ring-2 focus:ring-blue-100" value={searchQuery} onChange={(e) => setSearchQuery(e.target.value)} />
+            </div>
+            <select className="bg-slate-50 px-6 py-4 rounded-2xl text-sm font-bold outline-none text-slate-600 border-none cursor-pointer" value={filterMapel} onChange={(e) => setFilterMapel(e.target.value)}>
+              <option value="all">Semua Mata Pelajaran</option>
               {mapelList.map(m => <option key={m.id} value={m.nama}>{m.nama}</option>)}
             </select>
-            <select className="p-4 bg-blue-600 text-white rounded-2xl text-xs font-bold outline-none" value={tipeSoal} onChange={(e) => {setTipeSoal(e.target.value); setJawabanBenar('');}}>
-              <option value="pilihan_ganda">Pilihan Ganda</option>
-              <option value="isian">Isian Singkat</option>
-              <option value="uraian">Uraian / Essay</option>
-              <option value="benar_salah">Benar / Salah</option>
-              <option value="pencocokan">Pencocokan</option>
-            </select>
           </div>
-          <div className="bg-slate-50 rounded-2xl overflow-hidden border-none quill-container">
-            <ReactQuill theme="snow" value={pertanyaan} onChange={setPertanyaan} modules={modules} placeholder="Tulis pertanyaan..." />
-          </div>
-          <div className="flex gap-2">
-            <label className="flex-1 cursor-pointer p-3 bg-slate-50 rounded-xl flex items-center justify-center gap-2 text-slate-500 hover:bg-blue-50">
-              <ImageIcon size={16}/> <span className="text-[10px] font-bold uppercase">Gambar</span>
-              <input type="file" hidden accept="image/*" onChange={(e) => handleUpload(e, 'image')} />
-            </label>
-            <label className="flex-1 cursor-pointer p-3 bg-slate-50 rounded-xl flex items-center justify-center gap-2 text-slate-500 hover:bg-purple-50">
-              <Music size={16}/> <span className="text-[10px] font-bold uppercase">Audio</span>
-              <input type="file" hidden accept="audio/*" onChange={(e) => handleUpload(e, 'audio')} />
-            </label>
-          </div>
-          {media && (
-            <div className="p-2 bg-blue-50 rounded-xl flex items-center justify-between border border-blue-100">
-              <span className="text-[9px] font-black text-blue-600 uppercase ml-2">✓ {media.type} Terunggah</span>
-              <button onClick={() => setMedia(null)} className="p-1 text-red-500"><X size={14}/></button>
-            </div>
-          )}
-          <div className="space-y-3 pt-2">
-            {tipeSoal === 'pencocokan' && (
-              <div className="space-y-2">
-                {pairs.map((p, idx) => (
-                  <div key={p.id} className="flex gap-2 items-center">
-                    <input placeholder="Kiri" className="flex-1 p-2 bg-slate-50 border rounded-lg text-xs" value={p.key} onChange={(e) => { const n = [...pairs]; n[idx].key = e.target.value; setPairs(n); }} />
-                    <input placeholder="Kanan" className="flex-1 p-2 bg-slate-50 border rounded-lg text-xs" value={p.value} onChange={(e) => { const n = [...pairs]; n[idx].value = e.target.value; setPairs(n); }} />
-                    <button onClick={() => setPairs(pairs.filter(i => i.id !== p.id))} className="text-red-400"><Trash2 size={14}/></button>
-                  </div>
-                ))}
-                <button onClick={() => setPairs([...pairs, {id: Date.now(), key: '', value: ''}])} className="w-full py-2 border-2 border-dashed rounded-xl text-[9px] font-bold text-slate-400 uppercase">+ BARIS</button>
+
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+            {filteredSoal.length === 0 ? (
+              <div className="col-span-full bg-white p-20 rounded-[3rem] border border-dashed text-center">
+                <HelpCircle size={48} className="mx-auto text-slate-200 mb-4"/>
+                <p className="text-slate-400 font-bold italic text-sm">Belum ada soal yang ditemukan.</p>
               </div>
-            )}
-            {tipeSoal === 'pilihan_ganda' && (
+            ) : filteredSoal.map((s) => (
+              <div key={s.id} className="bg-white p-6 rounded-[2.5rem] border shadow-sm hover:border-blue-300 transition-all group">
+                <div className="flex justify-between items-start mb-4">
+                  <div className="space-y-1">
+                    <span className="text-[9px] font-black text-blue-600 uppercase tracking-widest px-2 py-1 bg-blue-50 rounded-lg">{s.namaBankSoal}</span>
+                    <div className="flex gap-2">
+                      <span className="text-[8px] font-bold text-slate-400 uppercase">{s.mapel}</span>
+                      <span className="text-[8px] font-bold text-slate-400 uppercase">•</span>
+                      <span className="text-[8px] font-bold text-slate-400 uppercase">{(s.tipe || 'pilihan_ganda')?.replace('_', ' ')}</span>
+                    </div>
+                  </div>
+                  <div className="flex gap-1 opacity-0 group-hover:opacity-100 transition-opacity">
+                    <button onClick={() => handleEdit(s)} className="p-2.5 bg-orange-50 text-orange-500 rounded-xl hover:bg-orange-500 hover:text-white transition-all"><Edit3 size={16}/></button>
+                    <button onClick={() => confirm('Hapus soal?') && deleteDoc(doc(db, "bank_soal", s.id))} className="p-2.5 bg-red-50 text-red-500 rounded-xl hover:bg-red-500 hover:text-white transition-all"><Trash2 size={16}/></button>
+                  </div>
+                </div>
+                <div className="text-sm font-bold text-slate-700 leading-relaxed mb-4 line-clamp-3 prose-sm" dangerouslySetInnerHTML={{ __html: s.pertanyaan }} />
+                <div className="flex justify-between items-center pt-4 border-t border-slate-50">
+                  <div className="text-[9px] font-black text-green-600 uppercase flex items-center gap-1.5 bg-green-50 px-3 py-1.5 rounded-full">
+                    <CheckCircle2 size={12}/> Kunci: {s.tipe === 'pencocokan' ? 'Matching' : s.jawabanBenar}
+                  </div>
+                  <span className="text-[10px] font-bold text-slate-300 uppercase">Poin: {s.bobot}</span>
+                </div>
+              </div>
+            ))}
+          </div>
+        </div>
+      )}
+
+      {/* --- VIEW: FORM BUAT/EDIT SOAL (WIDE) --- */}
+      {view === 'form' && (
+        <div className="max-w-4xl mx-auto space-y-6">
+          <div className="bg-white p-6 rounded-[2.5rem] border shadow-sm flex justify-between items-center">
+             <button onClick={() => setView('list')} className="p-3 bg-slate-50 text-slate-600 rounded-2xl hover:bg-slate-100 transition-all flex items-center gap-2 font-bold text-xs uppercase">
+                <ArrowLeft size={18}/> Kembali
+             </button>
+             <h2 className="text-sm font-black text-slate-800 uppercase tracking-widest">{isEditMode ? 'Editor Mode' : 'Pembuat Soal'}</h2>
+          </div>
+
+          <div className="bg-white p-8 md:p-12 rounded-[3rem] border shadow-sm space-y-8">
+            <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
               <div className="space-y-2">
-                {['a', 'b', 'c', 'd', 'e'].map(l => (
-                  <input key={l} placeholder={`Opsi ${l.toUpperCase()}`} className="w-full p-3 bg-slate-50 border rounded-xl text-xs" value={(opsi as any)[l]} onChange={(e) => setOpsi({...opsi, [l]: e.target.value})} />
-                ))}
-                <select className="w-full p-4 bg-green-50 text-green-700 rounded-2xl text-xs font-black uppercase outline-none" value={jawabanBenar} onChange={(e) => setJawabanBenar(e.target.value)}>
-                  <option value="">Kunci Jawaban</option>
-                  {['a','b','c','d','e'].map(l => (opsi as any)[l] && <option key={l} value={l}>{l.toUpperCase()}</option>)}
+                <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest ml-1">Kelompok Soal</label>
+                <select className="w-full p-4 bg-slate-50 border-none rounded-2xl text-xs font-bold outline-none ring-2 ring-transparent focus:ring-blue-100" value={namaBankSoal} onChange={(e) => handleKelompokChange(e.target.value)}>
+                  <option value="">Pilih Kelompok</option>
+                  {kelompokList.map(k => <option key={k.id} value={k.nama}>{k.nama}</option>)}
                 </select>
               </div>
-            )}
-            {tipeSoal === 'benar_salah' && (
-              <div className="flex gap-2">
-                {['benar', 'salah'].map(v => (
-                  <button key={v} onClick={() => setJawabanBenar(v)} className={`flex-1 py-3 rounded-xl font-black uppercase text-[10px] border ${jawabanBenar === v ? 'bg-green-600 text-white' : 'bg-white text-slate-400'}`}>{v}</button>
-                ))}
+              <div className="space-y-2">
+                <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest ml-1">Mata Pelajaran (Otomatis)</label>
+                <input readOnly className="w-full p-4 bg-slate-100 border-none rounded-2xl text-xs font-bold text-slate-500 outline-none" value={selectedMapel || 'Pilih kelompok dulu...'} />
+              </div>
+              <div className="space-y-2">
+                <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest ml-1">Tipe Soal</label>
+                <select className="w-full p-4 bg-blue-600 text-white rounded-2xl text-xs font-bold outline-none" value={tipeSoal} onChange={(e) => {setTipeSoal(e.target.value); setJawabanBenar('');}}>
+                  <option value="pilihan_ganda">Pilihan Ganda</option>
+                  <option value="isian">Isian Singkat</option>
+                  <option value="uraian">Uraian / Essay</option>
+                  <option value="benar_salah">Benar / Salah</option>
+                  <option value="pencocokan">Pencocokan</option>
+                </select>
+              </div>
+            </div>
+
+            <div className="space-y-2">
+              <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest ml-1">Pertanyaan</label>
+              <div className="bg-slate-50 rounded-[2rem] overflow-hidden border-none quill-large">
+                <ReactQuill theme="snow" value={pertanyaan} onChange={setPertanyaan} modules={modules} placeholder="Tulis rincian pertanyaan di sini..." />
+              </div>
+            </div>
+
+            <div className="grid grid-cols-2 gap-4">
+               <label className="cursor-pointer p-4 bg-slate-50 rounded-2xl flex items-center justify-center gap-3 text-slate-500 hover:bg-blue-50 transition-all border-2 border-dashed border-slate-200">
+                  <ImageIcon size={20} className="text-blue-500"/> <span className="text-xs font-bold uppercase">Unggah Gambar</span>
+                  <input type="file" hidden accept="image/*" onChange={(e) => handleUpload(e, 'image')} />
+               </label>
+               <label className="cursor-pointer p-4 bg-slate-50 rounded-2xl flex items-center justify-center gap-3 text-slate-500 hover:bg-purple-50 transition-all border-2 border-dashed border-slate-200">
+                  <Music size={20} className="text-purple-500"/> <span className="text-xs font-bold uppercase">Unggah Audio</span>
+                  <input type="file" hidden accept="audio/*" onChange={(e) => handleUpload(e, 'audio')} />
+               </label>
+            </div>
+
+            {media && (
+              <div className="p-4 bg-blue-50 rounded-2xl flex items-center justify-between animate-in zoom-in">
+                <div className="flex items-center gap-3">
+                  <CheckCircle2 className="text-blue-600"/>
+                  <span className="text-xs font-black text-blue-600 uppercase tracking-widest">Media {media.type} berhasil dipasang</span>
+                </div>
+                <button onClick={() => setMedia(null)} className="p-2 text-red-500 hover:bg-white rounded-xl transition-all"><Trash2 size={18}/></button>
               </div>
             )}
-            {(tipeSoal === 'isian' || tipeSoal === 'uraian') && (
-              <input placeholder="Kunci Jawaban" className="w-full p-4 bg-green-50 text-green-700 rounded-2xl text-xs font-bold border-none outline-none" value={jawabanBenar} onChange={(e) => setJawabanBenar(e.target.value)} />
-            )}
-          </div>
-          <div className="flex gap-4 items-end border-t pt-4">
-            <div className="w-24">
-              <label className="text-[10px] font-black text-slate-400 uppercase">Bobot</label>
-              <input type="number" className="w-full p-3 bg-slate-50 rounded-xl font-bold text-sm border-none outline-none" value={bobot} onChange={(e) => setBobot(Number(e.target.value))} />
-            </div>
-            <button onClick={simpanSoal} disabled={loading || uploading} className={`flex-1 py-4 rounded-2xl font-black text-[10px] uppercase tracking-widest text-white transition-all ${isEditMode ? 'bg-orange-500' : 'bg-slate-900'}`}>
-              {loading ? <Loader2 className="animate-spin mx-auto"/> : isEditMode ? "Perbarui" : "Simpan"}
-            </button>
-          </div>
-        </div>
-      </div>
-      <div className="lg:col-span-7 space-y-4">
-        <div className="bg-white p-4 rounded-3xl border shadow-sm flex flex-col md:flex-row gap-3">
-          <div className="relative flex-1">
-            <Search size={16} className="absolute left-4 top-1/2 -translate-y-1/2 text-slate-400" />
-            <input placeholder="Cari soal..." className="w-full pl-10 pr-4 py-3 bg-slate-50 rounded-2xl text-xs font-bold outline-none" value={searchQuery} onChange={(e) => setSearchQuery(e.target.value)} />
-          </div>
-          <select className="bg-slate-50 px-4 py-3 rounded-2xl text-xs font-bold outline-none" value={filterMapel} onChange={(e) => setFilterMapel(e.target.value)}>
-            <option value="all">Semua Mapel</option>
-            {mapelList.map(m => <option key={m.id} value={m.nama}>{m.nama}</option>)}
-          </select>
-        </div>
-        <div className="space-y-4">
-          {filteredSoal.map((s) => (
-            <div key={s.id} className="bg-white p-6 rounded-[2.2rem] border shadow-sm hover:border-blue-200 transition-all">
-              <div className="flex justify-between items-start mb-3">
-                <div className="flex flex-col gap-1">
-                  <span className="text-[8px] font-black text-blue-500 uppercase tracking-widest">{s.namaBankSoal}</span>
-                  <div className="flex gap-2">
-                    <span className="px-2 py-1 bg-slate-100 rounded text-[8px] font-black text-slate-500 uppercase">{s.mapel}</span>
-                    <span className="px-2 py-1 bg-blue-50 rounded text-[8px] font-black text-blue-600 uppercase">{(s.tipe || 'pilihan_ganda')?.replace('_', ' ')}</span>
+
+            <div className="space-y-4 pt-6 border-t">
+              <h4 className="text-[10px] font-black text-slate-400 uppercase tracking-widest ml-1">Konfigurasi Jawaban</h4>
+              {tipeSoal === 'pencocokan' && (
+                <div className="grid grid-cols-1 gap-3">
+                  {pairs.map((p, idx) => (
+                    <div key={p.id} className="flex gap-3 items-center animate-in slide-in-from-left-2">
+                      <input placeholder="Kiri" className="flex-1 p-4 bg-slate-50 border-none rounded-2xl text-sm font-bold outline-none" value={p.key} onChange={(e) => { const n = [...pairs]; n[idx].key = e.target.value; setPairs(n); }} />
+                      <div className="text-slate-300">→</div>
+                      <input placeholder="Kanan" className="flex-1 p-4 bg-slate-50 border-none rounded-2xl text-sm font-bold outline-none" value={p.value} onChange={(e) => { const n = [...pairs]; n[idx].value = e.target.value; setPairs(n); }} />
+                      <button onClick={() => setPairs(pairs.filter(i => i.id !== p.id))} className="p-2 text-red-400 hover:text-red-600"><Trash2 size={20}/></button>
+                    </div>
+                  ))}
+                  <button onClick={() => setPairs([...pairs, {id: Date.now(), key: '', value: ''}])} className="w-full py-4 border-2 border-dashed rounded-2xl text-xs font-black text-slate-400 uppercase hover:bg-slate-50 transition-all">+ Tambah Baris Pasangan</button>
+                </div>
+              )}
+
+              {tipeSoal === 'pilihan_ganda' && (
+                <div className="grid grid-cols-1 gap-3">
+                  {['a', 'b', 'c', 'd', 'e'].map(l => (
+                    <div key={l} className="flex gap-4 items-center">
+                       <span className="w-8 h-8 rounded-full bg-slate-100 flex items-center justify-center text-[10px] font-black text-slate-400 uppercase">{l}</span>
+                       <input placeholder={`Input Opsi ${l.toUpperCase()}`} className="flex-1 p-4 bg-slate-50 border-none rounded-2xl text-sm font-bold outline-none" value={(opsi as any)[l]} onChange={(e) => setOpsi({...opsi, [l]: e.target.value})} />
+                    </div>
+                  ))}
+                  <div className="mt-4">
+                    <label className="text-[10px] font-black text-green-600 uppercase tracking-widest ml-1">Pilih Kunci Jawaban</label>
+                    <div className="flex gap-2 mt-2">
+                      {['a','b','c','d','e'].map(l => (opsi as any)[l] && (
+                        <button key={l} onClick={() => setJawabanBenar(l)} className={`flex-1 py-4 rounded-2xl font-black uppercase text-xs border-2 transition-all ${jawabanBenar === l ? 'bg-green-600 border-green-600 text-white shadow-xl shadow-green-100' : 'bg-white text-slate-300 border-slate-100'}`}>
+                          Opsi {l}
+                        </button>
+                      ))}
+                    </div>
                   </div>
                 </div>
-                <div className="flex gap-2">
-                  <button onClick={() => handleEdit(s)} className="p-2 bg-orange-50 text-orange-500 rounded-xl"><Edit3 size={16}/></button>
-                  <button onClick={() => confirm('Hapus?') && deleteDoc(doc(db, "bank_soal", s.id))} className="p-2 bg-red-50 text-red-500 rounded-xl"><Trash2 size={16}/></button>
+              )}
+
+              {tipeSoal === 'benar_salah' && (
+                <div className="flex gap-4">
+                  {['benar', 'salah'].map(v => (
+                    <button key={v} onClick={() => setJawabanBenar(v)} className={`flex-1 py-6 rounded-[2rem] font-black uppercase text-sm border-4 transition-all ${jawabanBenar === v ? 'bg-green-600 border-green-600 text-white shadow-2xl shadow-green-200' : 'bg-white text-slate-300 border-slate-100'}`}>
+                      {v}
+                    </button>
+                  ))}
                 </div>
+              )}
+
+              {(tipeSoal === 'isian' || tipeSoal === 'uraian') && (
+                <div className="space-y-2">
+                  <label className="text-[10px] font-black text-green-600 uppercase tracking-widest ml-1">Kunci Jawaban Teks</label>
+                  <input placeholder="Ketik kunci jawaban yang benar..." className="w-full p-5 bg-green-50 border-none rounded-2xl text-sm font-bold text-green-700 outline-none" value={jawabanBenar} onChange={(e) => setJawabanBenar(e.target.value)} />
+                </div>
+              )}
+            </div>
+
+            <div className="flex gap-4 items-end pt-10">
+              <div className="w-32">
+                <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest ml-1">Bobot Skor</label>
+                <input type="number" className="w-full p-5 bg-slate-50 rounded-2xl mt-2 font-black text-center text-lg border-none" value={bobot} onChange={(e) => setBobot(Number(e.target.value))} />
               </div>
-              <div className="text-sm font-bold text-slate-700 leading-relaxed mb-3 prose-sm max-w-none ql-editor-preview" dangerouslySetInnerHTML={{ __html: s.pertanyaan }} />
-              <div className="bg-slate-50 p-3 rounded-2xl flex justify-between items-center">
-                <span className="text-[9px] font-black text-green-600 uppercase">Kunci: {s.tipe === 'pencocokan' ? 'Matching' : s.jawabanBenar}</span>
-                <span className="text-[9px] font-bold text-slate-400 uppercase font-mono">Poin: {s.bobot}</span>
+              <button onClick={simpanSoal} disabled={loading || uploading} className={`flex-1 py-5 rounded-[2rem] font-black text-xs uppercase tracking-widest text-white shadow-2xl transition-all active:scale-95 ${isEditMode ? 'bg-orange-500 shadow-orange-200' : 'bg-blue-600 shadow-blue-200'}`}>
+                {loading ? <Loader2 className="animate-spin mx-auto"/> : isEditMode ? "Perbarui Soal Sekarang" : "Simpan Soal Baru"}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* --- MODAL: BUAT KELOMPOK SOAL --- */}
+      {showKelompokModal && (
+        <div className="fixed inset-0 z-[100] flex items-center justify-center p-4 bg-slate-900/60 backdrop-blur-md animate-in fade-in duration-300">
+          <div className="bg-white w-full max-w-md rounded-[3rem] p-8 md:p-10 shadow-2xl space-y-6">
+            <div className="flex justify-between items-center">
+              <h3 className="text-xl font-black text-slate-800 uppercase tracking-tighter">Kelompok Baru</h3>
+              <button onClick={() => setShowKelompokModal(false)} className="p-2 bg-slate-100 rounded-full"><X size={20}/></button>
+            </div>
+            <div className="space-y-4">
+              <div className="space-y-2">
+                <label className="text-[10px] font-black text-slate-400 uppercase">Nama Kelompok</label>
+                <input placeholder="Misal: UAS Ganjil 2024" className="w-full p-4 bg-slate-50 border-none rounded-2xl text-sm font-bold outline-none" value={newKelompok.nama} onChange={(e) => setNewKelompok({...newKelompok, nama: e.target.value})} />
+              </div>
+              <div className="space-y-2">
+                <label className="text-[10px] font-black text-slate-400 uppercase">Pilih Mata Pelajaran</label>
+                <select className="w-full p-4 bg-slate-50 border-none rounded-2xl text-sm font-bold outline-none" value={newKelompok.mapel} onChange={(e) => setNewKelompok({...newKelompok, mapel: e.target.value})}>
+                   <option value="">Pilih Mapel</option>
+                   {mapelList.map(m => <option key={m.id} value={m.nama}>{m.nama}</option>)}
+                </select>
               </div>
             </div>
-          ))}
+            <button onClick={tambahKelompok} className="w-full bg-slate-900 text-white py-5 rounded-[2rem] font-black text-xs uppercase tracking-widest hover:bg-black transition-all">Simpan Kelompok</button>
+          </div>
         </div>
-      </div>
+      )}
     </div>
   );
 }

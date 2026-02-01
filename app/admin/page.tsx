@@ -495,9 +495,22 @@ function UserManagementSection() {
                       </div>
                     </td>
                     <td className="p-6">
-                      <div className="flex justify-center gap-2 opacity-100 lg:opacity-0 lg:group-hover:opacity-100 transition-all scale-90 lg:group-hover:scale-100">
-                        <button onClick={() => setEditingUser(user)} className="p-2.5 md:p-3 bg-blue-50 text-blue-600 hover:bg-blue-600 hover:text-white rounded-xl transition-all shadow-sm" title="Edit"><Edit3 size={16}/></button>
-                        <button onClick={() => { if(confirm('Hapus pengguna?')) deleteDoc(doc(db, "users", user.id)).then(fetchUsers) }} className="p-2.5 md:p-3 bg-red-50 text-red-500 hover:bg-red-500 hover:text-white rounded-xl transition-all shadow-sm" title="Hapus"><Trash2 size={16}/></button>
+                      {/* Perubahan: Menghapus opacity-0 dan group-hover:opacity-100 agar selalu tampil */}
+                      <div className="flex justify-center gap-2 scale-90 md:scale-100 transition-all">
+                        <button 
+                          onClick={() => setEditingUser(user)} 
+                          className="p-2.5 md:p-3 bg-blue-50 text-blue-600 hover:bg-blue-600 hover:text-white rounded-xl transition-all shadow-sm border border-blue-100" 
+                          title="Edit"
+                        >
+                          <Edit3 size={16}/>
+                        </button>
+                        <button 
+                          onClick={() => { if(confirm('Hapus pengguna ini?')) deleteDoc(doc(db, "users", user.id)).then(fetchUsers) }} 
+                          className="p-2.5 md:p-3 bg-red-50 text-red-500 hover:bg-red-500 hover:text-white rounded-xl transition-all shadow-sm border border-red-100" 
+                          title="Hapus"
+                        >
+                          <Trash2 size={16}/>
+                        </button>
                       </div>
                     </td>
                   </tr>

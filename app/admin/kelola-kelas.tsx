@@ -6,6 +6,7 @@ import {
   doc, updateDoc, query, orderBy 
 } from 'firebase/firestore';
 import { Trash2, Edit3, Plus, Loader2, School } from 'lucide-react';
+import { toast } from 'sonner';
 
 export default function KelolaKelasSection() {
   const [kelas, setKelas] = useState<{id: string, nama: string}[]>([]);
@@ -28,10 +29,13 @@ export default function KelolaKelasSection() {
     e.preventDefault();
     if (!namaKelas) return;
     try {
-      await addDoc(collection(db, "kelas"), { nama: namaKelas });
-      setNamaKelas('');
-      fetchKelas();
-    } catch (error) { alert("Gagal menambah kelas"); }
+        await addDoc(collection(db, "kelas"), { nama: namaKelas });
+        toast.success("Kelas berhasil ditambahkan!"); // Notifikasi keren
+        setNamaKelas('');
+        fetchKelas();
+    } catch (error) {
+        toast.error("Gagal menambah kelas");
+    }
   };
 
   const handleUpdate = async () => {
@@ -44,10 +48,16 @@ export default function KelolaKelasSection() {
   };
 
   const handleHapus = async (id: string) => {
-    if (confirm("Hapus kelas ini?")) {
-      await deleteDoc(doc(db, "kelas", id));
-      fetchKelas();
-    }
+    toast("Hapus kelas ini?", {
+        action: {
+        label: "Hapus",
+        onClick: async () => {
+            await deleteDoc(doc(db, "kelas", id));
+            fetchKelas();
+            toast.success("Kelas dihapus");
+        },
+        },
+    });
   };
 
   return (

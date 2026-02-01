@@ -209,13 +209,53 @@ export default function AdminPage() {
   );
 }
 
-// --- SUB KOMPONEN DASHBOARD (Tetap Sama) ---
+// --- SUB KOMPONEN: DASHBOARD OVERVIEW ---
 function DashboardOverview() {
+  const [statsData, setStatsData] = useState({
+    siswa: 0,
+    guru: 0,
+    ujian: 0,
+    soal: 0
+  });
+  const [loadingStats, setLoadingStats] = useState(true);
+
+  useEffect(() => {
+    const fetchRealStats = async () => {
+      setLoadingStats(true);
+      try {
+        // Ambil semua data user untuk dihitung secara lokal berdasarkan role
+        // (Atau gunakan count() query jika koleksi sangat besar)
+        const userSnap = await getDocs(collection(db, "users"));
+        const allUsers = userSnap.docs.map(d => d.data());
+        
+        const countSiswa = allUsers.filter(u => u.role === 'siswa').length;
+        const countGuru = allUsers.filter(u => u.role === 'guru').length;
+
+        // Sementara untuk Ujian dan Soal kita siapkan tempatnya (koleksi belum dibuat)
+        // const ujianSnap = await getDocs(collection(db, "ujian"));
+        // const soalSnap = await getDocs(collection(db, "bank_soal"));
+
+        setStatsData({
+          siswa: countSiswa,
+          guru: countGuru,
+          ujian: 0, // Update jika koleksi 'ujian' sudah ada
+          soal: 0   // Update jika koleksi 'soal' sudah ada
+        });
+      } catch (error) {
+        console.error("Gagal mengambil statistik:", error);
+      } finally {
+        setLoadingStats(false);
+      }
+    };
+
+    fetchRealStats();
+  }, []);
+
   const stats = [
-    { label: 'Total Siswa', value: '128', icon: <Users />, color: 'blue' },
-    { label: 'Total Guru', value: '14', icon: <UserPlus />, color: 'green' },
-    { label: 'Ujian Aktif', value: '02', icon: <ClipboardCheck />, color: 'orange' },
-    { label: 'Bank Soal', value: '542', icon: <Database />, color: 'purple' },
+    { label: 'Total Siswa', value: statsData.siswa, icon: <Users />, color: 'blue' },
+    { label: 'Total Guru', value: statsData.guru, icon: <UserPlus />, color: 'green' },
+    { label: 'Ujian Aktif', value: statsData.ujian, icon: <ClipboardCheck />, color: 'orange' },
+    { label: 'Bank Soal', value: statsData.soal, icon: <Database />, color: 'purple' },
   ];
 
   return (
@@ -230,17 +270,30 @@ function DashboardOverview() {
               {item.icon}
             </div>
             <p className="text-[10px] font-black text-slate-400 uppercase tracking-widest">{item.label}</p>
-            <h3 className="text-3xl font-black text-slate-800 mt-1 tracking-tighter">{item.value}</h3>
+            {loadingStats ? (
+              <Loader2 className="w-6 h-6 animate-spin text-slate-300 mt-2" />
+            ) : (
+              <h3 className="text-3xl font-black text-slate-800 mt-1 tracking-tighter">
+                {String(item.value).padStart(2, '0')}
+              </h3>
+            )}
           </div>
         ))}
       </div>
       
+      {/* Banner Informasi */}
       <div className="bg-blue-600 rounded-[2.5rem] md:rounded-[3rem] p-8 md:p-10 text-white relative overflow-hidden shadow-2xl shadow-blue-200">
         <div className="relative z-10 max-w-lg">
-          <h2 className="text-2xl md:text-3xl font-black tracking-tighter uppercase leading-tight">Sistem Ujian Online</h2>
-          <p className="mt-4 text-blue-100 text-xs md:text-sm font-medium leading-relaxed">Kelola seluruh aktivitas ujian sekolah Anda dengan mudah dalam satu dashboard terintegrasi.</p>
-          <button className="mt-8 bg-white text-blue-600 px-6 py-3 rounded-2xl font-black text-[10px] uppercase tracking-widest flex items-center gap-2 hover:bg-blue-50 transition-all active:scale-95">
-            Mulai Pengaturan <ChevronRight size={16}/>
+          <h2 className="text-2xl md:text-3xl font-black tracking-tighter uppercase leading-tight text-white">Sistem Ujian Online</h2>
+          <p className="mt-4 text-blue-100 text-xs md:text-sm font-medium leading-relaxed">
+            Data statistik di atas diambil langsung dari database Firebase secara real-time. 
+            Pastikan data user sudah terdaftar untuk melihat perubahan angka.
+          </p>
+          <button 
+            onClick={() => window.location.reload()} 
+            className="mt-8 bg-white text-blue-600 px-6 py-3 rounded-2xl font-black text-[10px] uppercase tracking-widest flex items-center gap-2 hover:bg-blue-50 transition-all active:scale-95"
+          >
+            Refresh Data <ChevronRight size={16}/>
           </button>
         </div>
         <ShieldCheck size={180} className="absolute -right-10 -bottom-10 text-blue-500/20 rotate-12 hidden sm:block" />

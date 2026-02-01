@@ -19,13 +19,24 @@ const ReactQuill = dynamic(async () => {
   const { Quill } = RQ;
 
   if (typeof window !== 'undefined') {
-    // Perbaikan: Gunakan casting (Quill as any) untuk menambah properti Parchment
+    // 1. Ambil Parchment dari internal Quill v2
     const Parchment = Quill.import('parchment');
-    (Quill as any).Parchment = Parchment;
     
+    // 2. Gunakan 'as any' agar TS tidak komplain saat kita memodifikasi strukturnya
+    const parchmentAny = Parchment as any;
+    
+    if (parchmentAny && !parchmentAny.Attributor) {
+      parchmentAny.Attributor = {
+        // Menggunakan properti yang ada di Quill v2 sebagai fallback
+        Style: Quill.import('attributors/style/size'), 
+      };
+    }
+    
+    // 3. Daftarkan kembali ke objek Quill
+    (Quill as any).Parchment = parchmentAny;
     window.Quill = Quill;
 
-    // Impor plugin image resize
+    // 4. Impor dan daftarkan plugin image resize
     const ImageResize = (await import('quill-image-resize-module-react')).default;
     Quill.register('modules/imageResize', ImageResize);
   }

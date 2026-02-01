@@ -25,25 +25,33 @@ body {
   font-family: Arial, Helvetica, sans-serif;
 }
 
-/* Tambahkan di bawah ini agar tidak dianggap error oleh sistem Tailwind */
+/* app/globals.css */
+
+/* Memastikan kontainer resize mengikuti posisi gambar */
 .ql-image-resizer-container {
   position: absolute !important;
   z-index: 1000 !important;
 }
 
+/* Memperbaiki tampilan toolbar alignment */
 .ql-image-resizer-toolbar {
   display: flex !important;
   visibility: visible !important;
   opacity: 1 !important;
-  background-color: #1e293b !important;
+  background-color: #1e293b !important; /* Warna Slate-800 */
   border-radius: 8px !important;
-  padding: 8px !important;
+  padding: 6px !important;
   z-index: 1001 !important;
+  box-shadow: 0 10px 15px -3px rgba(0, 0, 0, 0.3) !important;
 }
 
 .ql-image-resizer-toolbar span {
   color: white !important;
-  padding: 5px 12px !important;
+  padding: 4px 10px !important;
   cursor: pointer !important;
   border-right: 1px solid #475569 !important;
+}
+
+.ql-image-resizer-toolbar span:last-child {
+  border-right: none !important;
 }

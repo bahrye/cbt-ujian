@@ -3,40 +3,33 @@ import { useState, useEffect } from 'react';
 import { db, storage } from '@/lib/firebase';
 import { 
   collection, addDoc, getDocs, query, orderBy, 
-  deleteDoc, doc, onSnapshot, updateDoc 
+  deleteDoc, doc, onSnapshot, updateDoc, writeBatch 
 } from 'firebase/firestore';
 import { ref, uploadBytesResumable, getDownloadURL } from 'firebase/storage';
-// Perbaikan: Pastikan menggunakan lucide-react sesuai package.json
 import { 
-  Plus, Music, Trash2, 
-  HelpCircle, Loader2, CheckCircle2, Edit3, Search, X, ArrowLeft, FolderPlus
+  Plus, Music, Trash2, HelpCircle, Loader2, CheckCircle2, 
+  Edit3, Search, X, ArrowLeft, FolderPlus, FileUp, Download
 } from 'lucide-react';
 import dynamic from 'next/dynamic';
+import * as XLSX from 'xlsx';
 
-// Import modul secara dinamis
 const ReactQuill = dynamic(async () => {
   const { default: RQ } = await import('react-quill-new');
   const { Quill } = RQ;
 
   if (typeof window !== 'undefined') {
-    // Mengambil Parchment dengan tipe 'any' untuk menghindari validasi ketat TS
     const Parchment = (Quill as any).import('parchment');
-    
-    // Memberikan definisi dummy agar plugin image-resize tidak crash
     if (Parchment && !Parchment.Attributor) {
       Parchment.Attributor = {
         Style: (Quill as any).import('attributors/style/size'),
       };
     }
-    
     (Quill as any).Parchment = Parchment;
     window.Quill = Quill;
 
-    // Impor plugin secara dinamis
     const ImageResize = (await import('quill-image-resize-module-react')).default;
     Quill.register('modules/imageResize', ImageResize);
   }
-  
   return RQ;
 }, { 
   ssr: false,
@@ -69,10 +62,8 @@ export default function BankSoalSection() {
   const [pairs, setPairs] = useState([{ id: Date.now(), key: '', value: '' }]);
   const [media, setMedia] = useState<{type: string, url: string} | null>(null);
   const [uploading, setUploading] = useState(false);
-
   const [newKelompok, setNewKelompok] = useState({ nama: '' });
 
-  // Konfigurasi Editor
   const modules = {
     toolbar: [
       [{ 'header': [1, 2, 3, false] }],
@@ -83,7 +74,7 @@ export default function BankSoalSection() {
       ['clean']
     ],
     imageResize: {
-      modules: ['Resize', 'DisplaySize', 'Toolbar'],
+      modules: ['Resize', 'DisplaySize', 'Toolbar'], // Fitur alignment gambar di toolbar
       handleStyles: {
         backgroundColor: '#3b82f6',
         border: 'none',
@@ -107,6 +98,73 @@ export default function BankSoalSection() {
 
     return () => { unsubSoal(); unsubKelompok(); };
   }, []);
+
+  // Fitur Download Template
+  const downloadTemplate = () => {
+    const template = [
+      {
+        Nama_Bank_Soal: "UAS Ganjil 2024",
+        Mata_Pelajaran: "Matematika",
+        Tipe_Soal: "pilihan_ganda",
+        Pertanyaan: "<p>Berapakah 1+1?</p>",
+        Opsi_A: "1", Opsi_B: "2", Opsi_C: "3", Opsi_D: "4", Opsi_E: "5",
+        Jawaban_Benar: "b",
+        Bobot: 1
+      }
+    ];
+    const ws = XLSX.utils.json_to_sheet(template);
+    const wb = XLSX.utils.book_new();
+    XLSX.utils.book_append_sheet(wb, ws, "Template Soal");
+    XLSX.writeFile(wb, "template_bank_soal.xlsx");
+  };
+
+  // Fitur Import Excel
+  const handleImportExcel = async (e: any) => {
+    const file = e.target.files[0];
+    if (!file) return;
+
+    setLoading(true);
+    const reader = new FileReader();
+    reader.onload = async (evt) => {
+      try {
+        const bstr = evt.target?.result;
+        const wb = XLSX.read(bstr, { type: 'binary' });
+        const wsname = wb.SheetNames[0];
+        const ws = wb.Sheets[wsname];
+        const data = XLSX.utils.sheet_to_json(ws);
+
+        const batch = writeBatch(db);
+        data.forEach((item: any) => {
+          const docRef = doc(collection(db, "bank_soal"));
+          batch.set(docRef, {
+            namaBankSoal: item.Nama_Bank_Soal,
+            mapel: item.Mata_Pelajaran,
+            tipe: item.Tipe_Soal || 'pilihan_ganda',
+            pertanyaan: item.Pertanyaan,
+            opsi: {
+              a: String(item.Opsi_A || ''),
+              b: String(item.Opsi_B || ''),
+              c: String(item.Opsi_C || ''),
+              d: String(item.Opsi_D || ''),
+              e: String(item.Opsi_E || '')
+            },
+            jawabanBenar: String(item.Jawaban_Benar).toLowerCase(),
+            bobot: Number(item.Bobot || 1),
+            createdAt: new Date(),
+            updatedAt: new Date()
+          });
+        });
+
+        await batch.commit();
+        alert("Import Berhasil!");
+      } catch (err) {
+        alert("Gagal import! Periksa format file.");
+      } finally {
+        setLoading(false);
+      }
+    };
+    reader.readAsBinaryString(file);
+  };
 
   const tambahKelompok = async () => {
     if (!newKelompok.nama) return alert("Isi nama kelompok!");
@@ -192,7 +250,6 @@ export default function BankSoalSection() {
 
   return (
     <div className="max-w-7xl mx-auto pb-20 animate-in fade-in duration-500">
-      {/* View logic tetap sama seperti sebelumnya */}
       {view === 'list' && (
         <div className="space-y-6">
           <div className="flex flex-col md:flex-row justify-between items-start md:items-center gap-4 bg-white p-6 rounded-[2.5rem] border shadow-sm">
@@ -200,11 +257,18 @@ export default function BankSoalSection() {
               <h2 className="text-xl font-black text-slate-800 uppercase tracking-tighter">Bank Soal System</h2>
               <p className="text-[10px] text-slate-400 font-bold uppercase tracking-widest">{soalList.length} Soal terdaftar</p>
             </div>
-            <div className="flex gap-2 w-full md:w-auto">
-              <button onClick={() => setShowKelompokModal(true)} className="flex-1 md:flex-none flex items-center justify-center gap-2 bg-slate-100 text-slate-600 px-5 py-3 rounded-2xl font-bold text-xs uppercase hover:bg-slate-200 transition-all">
+            <div className="flex flex-wrap gap-2 w-full md:w-auto">
+              <button onClick={downloadTemplate} className="flex items-center gap-2 bg-emerald-50 text-emerald-600 px-4 py-3 rounded-2xl font-bold text-xs uppercase hover:bg-emerald-100 transition-all">
+                <Download size={18}/> Template
+              </button>
+              <label className="cursor-pointer flex items-center gap-2 bg-amber-50 text-amber-600 px-4 py-3 rounded-2xl font-bold text-xs uppercase hover:bg-amber-100 transition-all">
+                <FileUp size={18}/> Import Excel
+                <input type="file" hidden accept=".xlsx, .xls" onChange={handleImportExcel} />
+              </label>
+              <button onClick={() => setShowKelompokModal(true)} className="flex items-center gap-2 bg-slate-100 text-slate-600 px-4 py-3 rounded-2xl font-bold text-xs uppercase hover:bg-slate-200 transition-all">
                 <FolderPlus size={18}/> Kelompok
               </button>
-              <button onClick={() => { resetForm(); setView('form'); }} className="flex-1 md:flex-none flex items-center justify-center gap-2 bg-blue-600 text-white px-6 py-3 rounded-2xl font-black text-xs uppercase tracking-widest hover:bg-blue-700 shadow-lg shadow-blue-200 transition-all">
+              <button onClick={() => { resetForm(); setView('form'); }} className="flex items-center gap-2 bg-blue-600 text-white px-6 py-3 rounded-2xl font-black text-xs uppercase tracking-widest hover:bg-blue-700 shadow-lg shadow-blue-200 transition-all">
                 <Plus size={18}/> Buat Soal
               </button>
             </div>
@@ -266,7 +330,6 @@ export default function BankSoalSection() {
           </div>
 
           <div className="bg-white p-8 md:p-12 rounded-[3rem] border-2 border-slate-100 shadow-sm space-y-8">
-            {/* Form Fields tetap sama */}
             <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
               <div className="space-y-2">
                 <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest ml-1">Kelompok Soal</label>
@@ -297,11 +360,18 @@ export default function BankSoalSection() {
             <div className="space-y-2">
               <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest ml-1">Pertanyaan</label>
               <div className="bg-white rounded-[2rem] border-2 border-slate-200 overflow-hidden">
-                <ReactQuill theme="snow" value={pertanyaan} onChange={setPertanyaan} modules={modules} placeholder="Tulis pertanyaan di sini... Klik gambar untuk mengatur ukuran dan posisi." />
+                {/* CSS Inline untuk menambah tinggi editor */}
+                <style>{`.ql-editor { min-height: 300px !important; font-size: 16px; }`}</style>
+                <ReactQuill 
+                  theme="snow" 
+                  value={pertanyaan} 
+                  onChange={setPertanyaan} 
+                  modules={modules} 
+                  placeholder="Tulis pertanyaan di sini... Klik gambar untuk mengatur ukuran dan posisi (kiri/tengah/kanan)." 
+                />
               </div>
             </div>
 
-            {/* Bagian Media & Konfigurasi Jawaban tetap sama */}
             <div className="grid grid-cols-1 gap-4">
                <label className="cursor-pointer p-5 bg-slate-50 rounded-2xl flex items-center justify-center gap-3 text-slate-500 hover:bg-purple-50 transition-all border-2 border-dashed border-slate-300">
                   <Music size={20} className="text-purple-500"/> <span className="text-sm font-bold uppercase tracking-wide">Unggah File Audio (MP3/WAV)</span>
@@ -388,7 +458,6 @@ export default function BankSoalSection() {
         </div>
       )}
 
-      {/* Modal Kelompok tetap sama */}
       {showKelompokModal && (
         <div className="fixed inset-0 z-[100] flex items-center justify-center p-4 bg-slate-900/60 backdrop-blur-md animate-in fade-in duration-300">
           <div className="bg-white w-full max-w-md rounded-[3rem] p-8 md:p-10 shadow-2xl space-y-6 border-2 border-slate-100">

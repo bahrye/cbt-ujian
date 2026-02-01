@@ -6,30 +6,29 @@ import {
   deleteDoc, doc, onSnapshot, updateDoc 
 } from 'firebase/firestore';
 import { ref, uploadBytesResumable, getDownloadURL } from 'firebase/storage';
+// Perbaikan: Pastikan menggunakan lucide-react sesuai package.json
 import { 
   Plus, Music, Trash2, 
   HelpCircle, Loader2, CheckCircle2, Edit3, Search, X, ArrowLeft, FolderPlus
 } from 'lucide-react';
 import dynamic from 'next/dynamic';
 
-// Import modul secara dinamis dan daftarkan ImageResize ke Quill
+// Import modul secara dinamis
 const ReactQuill = dynamic(async () => {
   const { default: RQ } = await import('react-quill-new');
   const { Quill } = RQ;
 
   if (typeof window !== 'undefined') {
-    // 1. Daftarkan Quill ke window
-    window.Quill = Quill;
-    
-    // 2. SOLUSI UTAMA: Ekspos Parchment secara eksplisit
-    // Plugin ImageResize mencari Quill.Parchment atau Parchment.Attributor
+    // Perbaikan: Gunakan casting (Quill as any) untuk menambah properti Parchment
     const Parchment = Quill.import('parchment');
-    window.Quill.Parchment = Parchment;
-  }
+    (Quill as any).Parchment = Parchment;
+    
+    window.Quill = Quill;
 
-  // 3. Impor plugin setelah window.Quill siap
-  const ImageResize = (await import('quill-image-resize-module-react')).default;
-  Quill.register('modules/imageResize', ImageResize);
+    // Impor plugin image resize
+    const ImageResize = (await import('quill-image-resize-module-react')).default;
+    Quill.register('modules/imageResize', ImageResize);
+  }
   
   return RQ;
 }, { 
@@ -77,8 +76,12 @@ export default function BankSoalSection() {
       ['clean']
     ],
     imageResize: {
-      // Pastikan ini terisi modul yang diinginkan
-      modules: ['Resize', 'DisplaySize', 'Toolbar']
+      modules: ['Resize', 'DisplaySize', 'Toolbar'],
+      handleStyles: {
+        backgroundColor: '#3b82f6',
+        border: 'none',
+        color: 'white'
+      }
     }
   };
 
@@ -152,7 +155,10 @@ export default function BankSoalSection() {
     setBobot(soal.bobot);
     setMedia(soal.media);
     if (soal.tipe === 'pilihan_ganda') setOpsi(soal.opsi);
-    if (soal.tipe === 'pencocokan') setPairs(JSON.parse(soal.jawabanBenar));
+    if (soal.tipe === 'pencocokan') {
+        try { setPairs(JSON.parse(soal.jawabanBenar)); }
+        catch { setPairs([{ id: Date.now(), key: '', value: '' }]); }
+    }
     else setJawabanBenar(soal.jawabanBenar);
     setView('form');
   };
@@ -179,8 +185,7 @@ export default function BankSoalSection() {
 
   return (
     <div className="max-w-7xl mx-auto pb-20 animate-in fade-in duration-500">
-      
-      {/* --- VIEW: LIST DAFTAR SOAL --- */}
+      {/* View logic tetap sama seperti sebelumnya */}
       {view === 'list' && (
         <div className="space-y-6">
           <div className="flex flex-col md:flex-row justify-between items-start md:items-center gap-4 bg-white p-6 rounded-[2.5rem] border shadow-sm">
@@ -244,7 +249,6 @@ export default function BankSoalSection() {
         </div>
       )}
 
-      {/* --- VIEW: FORM BUAT/EDIT SOAL (WIDE) --- */}
       {view === 'form' && (
         <div className="max-w-4xl mx-auto space-y-6">
           <div className="bg-white p-6 rounded-[2.5rem] border shadow-sm flex justify-between items-center">
@@ -255,39 +259,7 @@ export default function BankSoalSection() {
           </div>
 
           <div className="bg-white p-8 md:p-12 rounded-[3rem] border-2 border-slate-100 shadow-sm space-y-8">
-            <style>{`
-              .ql-editor { min-height: 300px; font-size: 16px; }
-              
-              .ql-image-resizer-toolbar {
-                display: flex !important;
-                visibility: visible !important;
-                z-index: 10000 !important;
-                background-color: #1e293b !important;
-                border: 1px solid #475569 !important;
-                border-radius: 8px !important;
-                padding: 5px !important;
-                position: absolute !important;
-              }
-
-              .ql-image-resizer-toolbar span {
-                color: white !important;
-                padding: 2px 8px !important;
-                cursor: pointer !important;
-              }
-
-              .ql-image-resizer-handle {
-                background-color: #3b82f6 !important; /* Warna biru */
-                border: 1px solid white !important;
-                width: 12px !important;
-                height: 12px !important;
-                z-index: 10001 !important;
-              }
-
-              .ql-image-resizer-toolbar span:hover {
-                background: #475569 !important;
-              }
-            `}</style>
-            
+            {/* Form Fields tetap sama */}
             <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
               <div className="space-y-2">
                 <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest ml-1">Kelompok Soal</label>
@@ -318,10 +290,11 @@ export default function BankSoalSection() {
             <div className="space-y-2">
               <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest ml-1">Pertanyaan</label>
               <div className="bg-white rounded-[2rem] border-2 border-slate-200 overflow-hidden">
-                <ReactQuill theme="snow" value={pertanyaan} onChange={setPertanyaan} modules={modules} placeholder="Tulis pertanyaan di sini... Klik gambar untuk mengatur ukuran dan posisi (Alignment)." />
+                <ReactQuill theme="snow" value={pertanyaan} onChange={setPertanyaan} modules={modules} placeholder="Tulis pertanyaan di sini... Klik gambar untuk mengatur ukuran dan posisi." />
               </div>
             </div>
 
+            {/* Bagian Media & Konfigurasi Jawaban tetap sama */}
             <div className="grid grid-cols-1 gap-4">
                <label className="cursor-pointer p-5 bg-slate-50 rounded-2xl flex items-center justify-center gap-3 text-slate-500 hover:bg-purple-50 transition-all border-2 border-dashed border-slate-300">
                   <Music size={20} className="text-purple-500"/> <span className="text-sm font-bold uppercase tracking-wide">Unggah File Audio (MP3/WAV)</span>
@@ -408,7 +381,7 @@ export default function BankSoalSection() {
         </div>
       )}
 
-      {/* --- MODAL: BUAT KELOMPOK SOAL --- */}
+      {/* Modal Kelompok tetap sama */}
       {showKelompokModal && (
         <div className="fixed inset-0 z-[100] flex items-center justify-center p-4 bg-slate-900/60 backdrop-blur-md animate-in fade-in duration-300">
           <div className="bg-white w-full max-w-md rounded-[3rem] p-8 md:p-10 shadow-2xl space-y-6 border-2 border-slate-100">

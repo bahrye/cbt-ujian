@@ -24,3 +24,26 @@ body {
   color: var(--foreground);
   font-family: Arial, Helvetica, sans-serif;
 }
+
+/* Tambahkan di bawah ini agar tidak dianggap error oleh sistem Tailwind */
+.ql-image-resizer-container {
+  position: absolute !important;
+  z-index: 1000 !important;
+}
+
+.ql-image-resizer-toolbar {
+  display: flex !important;
+  visibility: visible !important;
+  opacity: 1 !important;
+  background-color: #1e293b !important;
+  border-radius: 8px !important;
+  padding: 8px !important;
+  z-index: 1001 !important;
+}
+
+.ql-image-resizer-toolbar span {
+  color: white !important;
+  padding: 5px 12px !important;
+  cursor: pointer !important;
+  border-right: 1px solid #475569 !important;
+}

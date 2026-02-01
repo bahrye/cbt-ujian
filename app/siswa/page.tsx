@@ -77,14 +77,23 @@ export default function HalamanSiswa() {
           const snap = await getDocs(q);
           const allUjian = snap.docs.map(d => ({ id: d.id, ...d.data() } as any));
           
-          // Ubah logika filter di useEffect Fetch Jadwal
-          const filtered = allUjian.filter((ujian) => {
-            if (!userData?.kelas || !ujian.kelas) return false;
+          // Filter Berdasarkan Target Kelas (Mendukung format String atau Array)
+          const filtered = allUjian.filter((ujian: any) => {
+            if (!userData?.kelas) return false;
             
-            const kelasSiswa = userData.kelas.toString().trim().toLowerCase();
-            // Pastikan membandingkan dengan toLowerCase() di kedua sisi
-            return Array.isArray(ujian.kelas) && 
-                  ujian.kelas.some((k: string) => k.trim().toLowerCase() === kelasSiswa);
+            const kelasSiswa = userData.kelas.toString().trim().toUpperCase();
+
+            // Jika field kelas di Firestore adalah STRING
+            if (typeof ujian.kelas === 'string') {
+              return ujian.kelas.trim().toUpperCase() === kelasSiswa;
+            }
+
+            // Jika field kelas di Firestore adalah ARRAY
+            if (Array.isArray(ujian.kelas)) {
+              return ujian.kelas.some((k: string) => k.trim().toUpperCase() === kelasSiswa);
+            }
+
+            return false;
           });
 
           setDaftarUjian(filtered);

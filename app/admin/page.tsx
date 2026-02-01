@@ -18,7 +18,8 @@ import {
 import * as XLSX from 'xlsx';
 
 import KelolaMapelSection from './kelola-mapel'; // Pastikan path benar
-import BankSoalSection from './bank-soal'
+import BankSoalSection from './bank-soal';
+import KelolaUjianSection from './kelola-ujian';
 
 const firebaseConfig = {
   apiKey: "AIzaSyAssFyf3tsDnisxlZqdJKBUBi7mOM_HLXM",
@@ -201,8 +202,9 @@ export default function AdminPage() {
           {activeMenu === 'Kelola Kelas' && <KelolaKelasSection />}
           {activeMenu === 'Kelola Mapel' && <KelolaMapelSection />}
           {activeMenu === 'Bank Soal' && <BankSoalSection />}
+          {activeMenu === 'Kelola Ujian' && <KelolaUjianSection />}
 
-          {activeMenu !== 'Dashboard' && activeMenu !== 'Kelola User' && activeMenu !== 'Kelola Kelas' && activeMenu !== 'Kelola Mapel' && activeMenu !== 'Bank Soal' && (
+          {activeMenu !== 'Dashboard' && activeMenu !== 'Kelola User' && activeMenu !== 'Kelola Kelas' && activeMenu !== 'Kelola Mapel' && activeMenu !== 'Bank Soal' && activeMenu !== 'Kelola Ujian' && (
             <div className="bg-white p-12 md:p-20 rounded-[3rem] border border-dashed border-slate-300 text-center space-y-4">
               <div className="mx-auto w-16 h-16 md:w-20 md:h-20 bg-slate-50 rounded-full flex items-center justify-center text-slate-300">
                 <Database size={32}/>

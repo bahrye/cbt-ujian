@@ -1,221 +1,173 @@
 'use client'
 import { useState, useEffect } from 'react';
 import { db, auth } from '@/lib/firebase';
-import { 
-  doc, 
-  getDocs, 
-  setDoc, 
-  updateDoc, 
-  onSnapshot, 
-  collection, 
-  query, 
-  orderBy 
-} from 'firebase/firestore';
+import { collection, onSnapshot, doc, setDoc } from 'firebase/firestore';
+import Sidebar from './components/Sidebar';
+import LembarUjian from './components/LembarUjian';
 
-export default function HalamanUjianSiswa() {
-  // State Management
-  const [isVerified, setIsVerified] = useState(false);
+export default function PageSiswa() {
+  const [activeTab, setActiveTab] = useState('jadwal');
+  const [isExamMode, setIsExamMode] = useState(false);
+  const [selectedUjian, setSelectedUjian] = useState<any>(null);
+  const [daftarJadwal, setDaftarJadwal] = useState<any[]>([]);
+  const [statusSiswa, setStatusSiswa] = useState<any>({});
+  
+  // State Modal Konfirmasi
+  const [showModal, setShowModal] = useState(false);
   const [tokenInput, setTokenInput] = useState('');
   const [tokenAsli, setTokenAsli] = useState('');
-  const [daftarSoal, setDaftarSoal] = useState<any[]>([]);
-  const [violations, setViolations] = useState(0);
-  const [timeLeft, setTimeLeft] = useState(3600); // Default 60 Menit
-  const [jawabanSiswa, setJawabanSiswa] = useState<{ [key: string]: string }>({});
+  const [konfirmasiJujur, setKonfirmasiJujur] = useState(false);
 
-  // 1. Ambil Token Aktif dari Pengawas (Real-time)
   useEffect(() => {
-    const unsub = onSnapshot(doc(db, "settings", "ujian_aktif"), (docSnap) => {
-      if (docSnap.exists()) {
-        setTokenAsli(docSnap.data().token);
-      }
+    const user = auth.currentUser;
+    if (!user) return;
+
+    // Load data jadwal & status secara real-time
+    const unsubJadwal = onSnapshot(collection(db, "ujian"), (snap) => {
+      setDaftarJadwal(snap.docs.map(d => ({ id: d.id, ...d.data() })));
     });
-    return () => unsub();
+
+    const unsubStatus = onSnapshot(collection(db, "ujian_berjalan"), (snap) => {
+      const map: any = {};
+      snap.docs.forEach(d => {
+        if (d.id.startsWith(user.uid)) {
+          map[d.data().ujianId] = d.data().status;
+        }
+      });
+      setStatusSiswa(map);
+    });
+
+    const unsubToken = onSnapshot(doc(db, "settings", "ujian_aktif"), (d) => {
+      if (d.exists()) setTokenAsli(d.data().token);
+    });
+
+    return () => { unsubJadwal(); unsubStatus(); unsubToken(); };
   }, []);
 
-  // 2. Sistem Anti-Contek & Timer (Hanya aktif jika sudah masuk ujian)
-  useEffect(() => {
-    if (!isVerified) return;
+  const handleStartProcess = async () => {
+    if (tokenInput.toUpperCase() !== tokenAsli) return alert("Token Salah!");
+    if (!konfirmasiJujur) return alert("Silakan centang konfirmasi kejujuran!");
 
-    // Fungsi mencatat pelanggaran ke Firebase
-    const laporPelanggaran = async (jumlahBaru: number) => {
-      const user = auth.currentUser;
-      if (user) {
-        await updateDoc(doc(db, "ujian_berjalan", user.uid), {
-          violations: jumlahBaru,
-          lastViolation: new Date()
-        });
-      }
-    };
-
-    const handleViolation = () => {
-      setViolations((v) => {
-        const newCount = v + 1;
-        laporPelanggaran(newCount);
-        return newCount;
-      });
-      alert("PERINGATAN! Anda terdeteksi meninggalkan halaman ujian. Pelanggaran dicatat!");
-    };
-
-    // Event Listeners untuk deteksi tab/jendela
-    const handleVisibility = () => { if (document.hidden) handleViolation(); };
-    const handleBlur = () => { handleViolation(); };
-
-    document.addEventListener("visibilitychange", handleVisibility);
-    window.addEventListener("blur", handleBlur);
-
-    // Timer Countdown
-    const timer = setInterval(() => {
-      setTimeLeft((prev) => {
-        if (prev <= 1) {
-          clearInterval(timer);
-          handleSelesaiUjian(); // Otomatis selesai jika waktu habis
-          return 0;
-        }
-        return prev - 1;
-      });
-    }, 1000);
-
-    return () => {
-      document.removeEventListener("visibilitychange", handleVisibility);
-      window.removeEventListener("blur", handleBlur);
-      clearInterval(timer);
-    };
-  }, [isVerified]);
-
-  // 3. Ambil Soal dari Bank Soal setelah Token Benar
-  const fetchSoal = async () => {
-    const q = query(collection(db, "bank_soal"), orderBy("createdAt", "asc"));
-    const querySnapshot = await getDocs(q);
-    const data = querySnapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
-    setDaftarSoal(data);
-  };
-
-  // 4. Verifikasi Token & Mulai Ujian
-  const handleStartUjian = async () => {
-    if (tokenInput.toUpperCase() === tokenAsli) {
-      const user = auth.currentUser;
-      if (user) {
-        // Daftarkan siswa ke tabel monitoring Pengawas
-        await setDoc(doc(db, "ujian_berjalan", user.uid), {
-          nama: user.email?.split('@')[0] || "Siswa",
-          email: user.email,
-          violations: 0,
-          status: 'Mengerjakan',
-          mulaiAt: new Date()
-        });
-        await fetchSoal();
-        setIsVerified(true);
-      }
-    } else {
-      alert("Token salah! Silakan minta token terbaru ke pengawas.");
-    }
-  };
-
-  // 5. Simpan Jawaban ke State
-  const handlePilihJawaban = (soalId: string, pilihan: string) => {
-    setJawabanSiswa(prev => ({ ...prev, [soalId]: pilihan }));
-  };
-
-  // 6. Selesai Ujian
-  const handleSelesaiUjian = async () => {
     const user = auth.currentUser;
-    if (user && confirm("Apakah Anda yakin ingin mengakhiri ujian?")) {
-      await updateDoc(doc(db, "ujian_berjalan", user.uid), {
-        status: 'Selesai',
-        selesaiAt: new Date(),
-        jawaban: jawabanSiswa
-      });
-      alert("Ujian selesai. Terima kasih!");
-      window.location.reload(); // Reset halaman
-    }
+    const docId = `${user?.uid}_${selectedUjian.id}`;
+
+    await setDoc(doc(db, "ujian_berjalan", docId), {
+      uid: user?.uid,
+      ujianId: selectedUjian.id,
+      nama: user?.email?.split('@')[0],
+      status: 'Mengerjakan',
+      mulaiAt: new Date(),
+      violations: 0
+    }, { merge: true });
+
+    setIsExamMode(true);
+    setShowModal(false);
   };
 
-  // Format Waktu MM:SS
-  const formatTime = (s: number) => {
-    const m = Math.floor(s / 60);
-    const sec = s % 60;
-    return `${m}:${sec.toString().padStart(2, '0')}`;
-  };
+  if (isExamMode) return <LembarUjian ujian={selectedUjian} onFinish={() => setIsExamMode(false)} />;
 
-  // Tampilan 1: Input Token
-  if (!isVerified) {
-    return (
-      <div className="min-h-screen flex items-center justify-center bg-gray-50 p-4">
-        <div className="bg-white p-8 rounded-2xl shadow-xl w-full max-w-md border border-gray-100">
-          <h2 className="text-3xl font-extrabold mb-2 text-blue-700">CBT Online</h2>
-          <p className="text-gray-500 mb-8 text-sm">Masukkan token ujian untuk memvalidasi akses Anda.</p>
-          <input 
-            type="text" 
-            placeholder="Ketik 6 Digit Token" 
-            className="w-full border-2 border-blue-100 p-4 rounded-xl text-center text-3xl font-mono uppercase focus:border-blue-500 outline-none mb-6 transition-all"
-            onChange={(e) => setTokenInput(e.target.value)}
-          />
-          <button 
-            onClick={handleStartUjian}
-            className="w-full bg-blue-600 text-white py-4 rounded-xl font-bold text-lg hover:shadow-lg hover:bg-blue-700 transition-all"
-          >
-            Masuk Ruang Ujian
-          </button>
-        </div>
-      </div>
-    );
-  }
-
-  // Tampilan 2: Lembar Ujian
   return (
-    <div className="min-h-screen bg-gray-50 pb-20">
-      {/* Header Bar */}
-      <div className="sticky top-0 z-50 bg-white border-b p-4 flex justify-between items-center px-4 md:px-20 shadow-sm">
-        <div>
-          <h1 className="font-bold text-blue-800">Ujian Berlangsung</h1>
-          <p className="text-xs font-semibold text-red-500">Pelanggaran: {violations}</p>
-        </div>
-        <div className="flex items-center gap-4">
-          <div className="bg-red-100 text-red-700 px-4 py-2 rounded-full font-mono font-bold">
-            ⏱️ {formatTime(timeLeft)}
-          </div>
-        </div>
-      </div>
+    <div className="flex bg-gray-50 min-h-screen">
+      <Sidebar activeTab={activeTab} setActiveTab={setActiveTab} userName={auth.currentUser?.email || "Siswa"} />
+      
+      <main className="flex-1 p-8">
+        {activeTab === 'jadwal' && (
+          <div>
+            <h1 className="text-2xl font-bold text-slate-800 mb-6">Jadwal Ujian Aktif</h1>
+            <div className="space-y-4">
+              {daftarJadwal.map((u) => {
+                const sekarang = new Date();
+                const mulai = u.mulai?.toDate();
+                const selesai = u.selesai?.toDate();
+                const status = statusSiswa[u.id] || 'Belum Mengerjakan';
 
-      <div className="max-w-3xl mx-auto mt-8 p-4">
-        {daftarSoal.length === 0 ? (
-          <p className="text-center text-gray-500">Memuat soal...</p>
-        ) : (
-          daftarSoal.map((s, index) => (
-            <div key={s.id} className="bg-white p-6 rounded-2xl shadow-sm mb-6 border border-gray-100">
-              <p className="text-lg font-semibold mb-6 text-gray-800">
-                <span className="text-blue-600 mr-2">{index + 1}.</span> {s.pertanyaan}
-              </p>
-              <div className="grid grid-cols-1 gap-3">
-                {s.opsi.map((opsi: string, i: number) => (
-                  <label 
-                    key={i} 
-                    className={`flex items-center p-4 border-2 rounded-xl cursor-pointer transition-all ${
-                      jawabanSiswa[s.id] === opsi ? 'border-blue-500 bg-blue-50' : 'border-gray-100 hover:border-gray-200'
-                    }`}
-                  >
-                    <input 
-                      type="radio" 
-                      name={s.id} 
-                      className="w-5 h-5 mr-4 accent-blue-600"
-                      onChange={() => handlePilihJawaban(s.id, opsi)}
-                      checked={jawabanSiswa[s.id] === opsi}
-                    />
-                    <span className="text-gray-700">{opsi}</span>
-                  </label>
-                ))}
-              </div>
+                return (
+                  <div key={u.id} className="bg-white p-6 rounded-2xl shadow-sm border border-gray-100 flex justify-between items-center">
+                    <div>
+                      <h3 className="text-xl font-bold text-blue-700">{u.namaMapel}</h3>
+                      <div className="grid grid-cols-2 gap-x-10 text-sm text-gray-500 mt-2">
+                        <p>📍 Kelas: {u.kelas}</p>
+                        <p>👥 Kelompok: {u.kelompok}</p>
+                        <p>⏰ Mulai: {mulai?.toLocaleString()}</p>
+                        <p>⏳ Durasi: {u.durasi} Menit</p>
+                        <p>👤 Pengawas: {u.pengawas}</p>
+                      </div>
+                    </div>
+                    
+                    <div className="text-right flex flex-col items-end gap-2">
+                      <span className={`text-[10px] font-bold px-3 py-1 rounded-full uppercase ${status === 'Selesai' ? 'bg-gray-100 text-gray-500' : 'bg-blue-50 text-blue-600'}`}>
+                        {status}
+                      </span>
+                      
+                      {status === 'Selesai' ? (
+                        <button disabled className="bg-gray-200 text-gray-400 px-6 py-2 rounded-xl font-bold">Selesai</button>
+                      ) : sekarang < mulai ? (
+                        <button disabled className="bg-blue-100 text-blue-300 px-6 py-2 rounded-xl font-bold">Belum Mulai</button>
+                      ) : sekarang > selesai ? (
+                        <button disabled className="bg-red-100 text-red-400 px-6 py-2 rounded-xl font-bold">Waktu Habis</button>
+                      ) : (
+                        <button 
+                          onClick={() => { setSelectedUjian(u); setShowModal(true); }}
+                          className="bg-green-600 hover:bg-green-700 text-white px-6 py-2 rounded-xl font-bold transition-all shadow-md"
+                        >
+                          {status === 'Mengerjakan' ? 'Lanjut Mengerjakan' : 'Mulai Sekarang'}
+                        </button>
+                      )}
+                    </div>
+                  </div>
+                );
+              })}
             </div>
-          ))
+          </div>
         )}
 
-        <button 
-          onClick={handleSelesaiUjian}
-          className="mt-10 w-full bg-green-600 text-white py-5 rounded-2xl font-black text-xl hover:bg-green-700 shadow-xl"
-        >
-          KIRIM JAWABAN SEKARANG
-        </button>
-      </div>
+        {/* Modal Konfirmasi & Token */}
+        {showModal && (
+          <div className="fixed inset-0 bg-slate-900/60 backdrop-blur-sm flex items-center justify-center p-4 z-[100]">
+            <div className="bg-white p-8 rounded-3xl shadow-2xl max-w-md w-full border border-gray-100">
+              <h2 className="text-2xl font-bold text-slate-800 mb-2">Konfirmasi Ujian</h2>
+              <p className="text-slate-500 text-sm mb-6">Mata Pelajaran: <span className="text-blue-600 font-bold">{selectedUjian?.namaMapel}</span></p>
+              
+              <div className="space-y-4">
+                <div>
+                  <label className="text-xs font-bold text-slate-400 uppercase ml-1">Token Ujian</label>
+                  <input 
+                    type="text" 
+                    placeholder="Masukkan 6 Digit Token"
+                    className="w-full p-4 bg-slate-50 border-2 border-slate-100 rounded-2xl text-center text-3xl font-mono uppercase focus:border-blue-500 outline-none transition-all"
+                    onChange={(e) => setTokenInput(e.target.value)}
+                  />
+                </div>
+
+                <div className="p-4 bg-yellow-50 rounded-2xl border border-yellow-100">
+                  <p className="text-[10px] text-yellow-700 font-bold uppercase mb-2 text-center">Tanda Tangan Digital (Pernyataan)</p>
+                  <label className="flex items-start gap-3 cursor-pointer">
+                    <input type="checkbox" className="mt-1 w-5 h-5 accent-yellow-600" onChange={(e) => setKonfirmasiJujur(e.target.checked)} />
+                    <span className="text-xs text-yellow-800 leading-tight">Saya menyatakan akan mengerjakan ujian ini dengan jujur dan mematuhi segala tata tertib yang berlaku.</span>
+                  </label>
+                </div>
+
+                <div className="flex gap-3 pt-4">
+                  <button onClick={() => setShowModal(false)} className="flex-1 py-4 text-slate-400 font-bold hover:bg-slate-50 rounded-2xl transition-all">Batal</button>
+                  <button onClick={handleStartProcess} className="flex-1 py-4 bg-blue-600 hover:bg-blue-700 text-white font-bold rounded-2xl shadow-lg shadow-blue-200 transition-all">Konfirmasi & Mulai</button>
+                </div>
+              </div>
+            </div>
+          </div>
+        )}
+
+        {activeTab === 'tata-tertib' && (
+          <div className="bg-white p-8 rounded-2xl shadow-sm border border-gray-100">
+            <h1 className="text-2xl font-bold mb-4">Tata Tertib Ujian</h1>
+            <ul className="list-decimal ml-5 space-y-2 text-slate-600">
+              <li>Dilarang membuka tab baru atau aplikasi lain selama ujian.</li>
+              <li>Siswa wajib masuk ke ruang ujian 5 menit sebelum waktu mulai.</li>
+              <li>Segala bentuk kecurangan akan dicatat otomatis oleh sistem.</li>
+              <li>Pastikan koneksi internet stabil sebelum menekan tombol "Kirim Jawaban".</li>
+            </ul>
+          </div>
+        )}
+      </main>
     </div>
   );
 }

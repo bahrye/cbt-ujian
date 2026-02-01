@@ -17,7 +17,6 @@ import {
 } from 'lucide-react';
 import * as XLSX from 'xlsx';
 
-// Konfigurasi Firebase untuk Secondary App (Keperluan Auth Admin)
 const firebaseConfig = {
   apiKey: "AIzaSyAssFyf3tsDnisxlZqdJKBUBi7mOM_HLXM",
   authDomain: "aplikasiujianonline-5be47.firebaseapp.com",
@@ -40,6 +39,7 @@ interface UserData {
 export default function AdminPage() {
   const [activeMenu, setActiveMenu] = useState('Dashboard');
   const [isSidebarOpen, setIsSidebarOpen] = useState(true);
+  const [isMobileOpen, setIsMobileOpen] = useState(false);
   const [authorized, setAuthorized] = useState(false);
   const router = useRouter();
 
@@ -75,6 +75,12 @@ export default function AdminPage() {
     return () => unsubscribe();
   }, [router]);
 
+  // Fungsi navigasi menu agar sidebar HP otomatis tertutup setelah pilih menu
+  const handleMenuClick = (name: string) => {
+    setActiveMenu(name);
+    setIsMobileOpen(false);
+  };
+
   if (!authorized) return (
     <div className="min-h-screen flex items-center justify-center bg-white">
       <Loader2 className="w-10 h-10 animate-spin text-blue-600" />
@@ -82,26 +88,46 @@ export default function AdminPage() {
   );
 
   return (
-    <div className="min-h-screen bg-slate-50 flex font-sans">
+    <div className="min-h-screen bg-slate-50 flex font-sans overflow-x-hidden">
+      
+      {/* --- OVERLAY UNTUK MOBILE --- */}
+      {isMobileOpen && (
+        <div 
+          className="fixed inset-0 bg-slate-900/40 backdrop-blur-sm z-30 lg:hidden transition-opacity"
+          onClick={() => setIsMobileOpen(false)}
+        />
+      )}
+
       {/* --- SIDEBAR --- */}
-      <aside className={`${isSidebarOpen ? 'w-72' : 'w-20'} bg-white border-r transition-all duration-300 flex flex-col fixed h-full z-20`}>
-        <div className="p-6 flex items-center gap-3 border-b mb-4">
-          <div className="p-2 bg-blue-600 rounded-xl text-white shadow-lg shadow-blue-200">
-            <ShieldCheck size={24}/>
-          </div>
-          {isSidebarOpen && (
-            <div className="overflow-hidden whitespace-nowrap">
-              <h1 className="text-lg font-black text-slate-800 uppercase tracking-tighter leading-none">CBT Admin</h1>
-              <p className="text-[9px] text-slate-400 font-bold uppercase tracking-widest mt-1">System Panel</p>
+      <aside className={`
+        fixed inset-y-0 left-0 z-40 bg-white border-r transition-all duration-300 transform
+        ${isMobileOpen ? 'translate-x-0 w-72' : '-translate-x-full lg:translate-x-0'}
+        ${isSidebarOpen ? 'lg:w-72' : 'lg:w-20'}
+        flex flex-col h-full
+      `}>
+        <div className="p-6 flex items-center justify-between border-b mb-4">
+          <div className="flex items-center gap-3">
+            <div className="p-2 bg-blue-600 rounded-xl text-white shadow-lg shadow-blue-200 shrink-0">
+              <ShieldCheck size={24}/>
             </div>
-          )}
+            {(isSidebarOpen || isMobileOpen) && (
+              <div className="overflow-hidden whitespace-nowrap animate-in fade-in duration-500">
+                <h1 className="text-lg font-black text-slate-800 uppercase tracking-tighter leading-none">CBT Admin</h1>
+                <p className="text-[9px] text-slate-400 font-bold uppercase tracking-widest mt-1">System Panel</p>
+              </div>
+            )}
+          </div>
+          {/* Tombol Close Sidebar Khusus Mobile */}
+          <button onClick={() => setIsMobileOpen(false)} className="lg:hidden p-2 text-slate-400 hover:text-red-500">
+            <X size={20}/>
+          </button>
         </div>
 
         <nav className="flex-1 px-4 space-y-1 overflow-y-auto custom-scrollbar">
           {menuItems.map((item) => (
             <button
               key={item.name}
-              onClick={() => setActiveMenu(item.name)}
+              onClick={() => handleMenuClick(item.name)}
               className={`w-full flex items-center gap-4 p-3.5 rounded-2xl transition-all group ${
                 activeMenu === item.name 
                 ? 'bg-blue-600 text-white shadow-xl shadow-blue-100' 
@@ -111,7 +137,7 @@ export default function AdminPage() {
               <div className={`${activeMenu === item.name ? 'text-white' : 'text-slate-400 group-hover:text-blue-600'}`}>
                 {item.icon}
               </div>
-              {isSidebarOpen && <span className="text-sm font-bold tracking-tight">{item.name}</span>}
+              {(isSidebarOpen || isMobileOpen) && <span className="text-sm font-bold tracking-tight">{item.name}</span>}
             </button>
           ))}
         </nav>
@@ -122,27 +148,42 @@ export default function AdminPage() {
             className="w-full flex items-center gap-4 p-3.5 text-red-500 hover:bg-red-50 rounded-2xl transition-all font-bold text-sm"
           >
             <LogOut size={20}/>
-            {isSidebarOpen && <span>Keluar Sistem</span>}
+            {(isSidebarOpen || isMobileOpen) && <span>Keluar Sistem</span>}
           </button>
         </div>
       </aside>
 
       {/* --- MAIN CONTENT --- */}
-      <main className={`flex-1 transition-all duration-300 ${isSidebarOpen ? 'ml-72' : 'ml-20'} p-4 md:p-8`}>
+      <main className={`
+        flex-1 transition-all duration-300 min-h-screen
+        ${isSidebarOpen ? 'lg:ml-72' : 'lg:ml-20'} 
+        p-4 md:p-8
+      `}>
         {/* Top Header */}
-        <header className="flex justify-between items-center mb-8 bg-white p-4 rounded-3xl border shadow-sm">
+        <header className="flex justify-between items-center mb-8 bg-white p-4 rounded-3xl border shadow-sm sticky top-4 z-20">
           <div className="flex items-center gap-4">
-            <button onClick={() => setIsSidebarOpen(!isSidebarOpen)} className="p-2 hover:bg-slate-100 rounded-xl text-slate-600 transition-colors">
+            {/* Burger Button untuk Mobile */}
+            <button 
+              onClick={() => setIsMobileOpen(true)} 
+              className="lg:hidden p-2.5 bg-slate-50 hover:bg-blue-50 text-blue-600 rounded-xl transition-colors"
+            >
+              <Menu size={22}/>
+            </button>
+            {/* Toggle Button untuk Desktop */}
+            <button 
+              onClick={() => setIsSidebarOpen(!isSidebarOpen)} 
+              className="hidden lg:block p-2 hover:bg-slate-100 rounded-xl text-slate-600 transition-colors"
+            >
               <Menu size={24}/>
             </button>
-            <div className="hidden sm:block">
-              <h2 className="text-sm font-black text-slate-800 uppercase tracking-widest">{activeMenu}</h2>
+            <div>
+              <h2 className="text-xs font-black text-slate-800 uppercase tracking-widest hidden sm:block">{activeMenu}</h2>
             </div>
           </div>
           
           <div className="flex items-center gap-3 pl-4 border-l">
             <div className="text-right hidden md:block">
-              <p className="text-[10px] font-black text-slate-400 uppercase tracking-widest leading-none">Selamat Datang,</p>
+              <p className="text-[10px] font-black text-slate-400 uppercase tracking-widest leading-none">Status Login</p>
               <p className="text-xs font-bold text-slate-800">Administrator</p>
             </div>
             <div className="w-10 h-10 bg-blue-100 rounded-2xl flex items-center justify-center font-bold text-blue-600 border border-blue-200 shadow-inner">AD</div>
@@ -150,16 +191,16 @@ export default function AdminPage() {
         </header>
 
         {/* Content Area */}
-        <section className="animate-in fade-in slide-in-from-bottom-4 duration-500">
+        <section className="animate-in fade-in slide-in-from-bottom-4 duration-500 max-w-7xl mx-auto">
           {activeMenu === 'Dashboard' && <DashboardOverview />}
           {activeMenu === 'Kelola User' && <UserManagementSection />}
           {activeMenu !== 'Dashboard' && activeMenu !== 'Kelola User' && (
-            <div className="bg-white p-20 rounded-[3rem] border border-dashed border-slate-300 text-center space-y-4">
-              <div className="mx-auto w-20 h-20 bg-slate-50 rounded-full flex items-center justify-center text-slate-300">
-                <Database size={40}/>
+            <div className="bg-white p-12 md:p-20 rounded-[3rem] border border-dashed border-slate-300 text-center space-y-4">
+              <div className="mx-auto w-16 h-16 md:w-20 md:h-20 bg-slate-50 rounded-full flex items-center justify-center text-slate-300">
+                <Database size={32}/>
               </div>
-              <h2 className="text-xl font-black text-slate-400 uppercase tracking-widest">Modul {activeMenu}</h2>
-              <p className="text-sm text-slate-400 italic font-medium">Fitur ini sedang dalam tahap integrasi database...</p>
+              <h2 className="text-lg md:text-xl font-black text-slate-400 uppercase tracking-widest">Modul {activeMenu}</h2>
+              <p className="text-xs md:text-sm text-slate-400 italic font-medium">Sedang dikembangkan untuk versi mobile...</p>
             </div>
           )}
         </section>
@@ -168,7 +209,7 @@ export default function AdminPage() {
   );
 }
 
-// --- SUB KOMPONEN: DASHBOARD OVERVIEW ---
+// --- SUB KOMPONEN DASHBOARD (Tetap Sama) ---
 function DashboardOverview() {
   const stats = [
     { label: 'Total Siswa', value: '128', icon: <Users />, color: 'blue' },
@@ -179,10 +220,13 @@ function DashboardOverview() {
 
   return (
     <div className="space-y-8">
-      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-6">
+      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4 md:gap-6">
         {stats.map((item, i) => (
           <div key={i} className="bg-white p-6 rounded-[2.5rem] border shadow-sm hover:shadow-md transition-all group">
-            <div className={`w-12 h-12 rounded-2xl bg-${item.color}-50 text-${item.color}-600 flex items-center justify-center mb-4 group-hover:scale-110 transition-transform`}>
+            <div className={`w-12 h-12 rounded-2xl flex items-center justify-center mb-4 transition-transform group-hover:scale-110 
+              ${item.color === 'blue' ? 'bg-blue-50 text-blue-600' : 
+                item.color === 'green' ? 'bg-green-50 text-green-600' : 
+                item.color === 'orange' ? 'bg-orange-50 text-orange-600' : 'bg-purple-50 text-purple-600'}`}>
               {item.icon}
             </div>
             <p className="text-[10px] font-black text-slate-400 uppercase tracking-widest">{item.label}</p>
@@ -191,21 +235,21 @@ function DashboardOverview() {
         ))}
       </div>
       
-      <div className="bg-blue-600 rounded-[3rem] p-10 text-white relative overflow-hidden shadow-2xl shadow-blue-200">
+      <div className="bg-blue-600 rounded-[2.5rem] md:rounded-[3rem] p-8 md:p-10 text-white relative overflow-hidden shadow-2xl shadow-blue-200">
         <div className="relative z-10 max-w-lg">
-          <h2 className="text-3xl font-black tracking-tighter uppercase leading-none">Sistem Ujian Online</h2>
-          <p className="mt-4 text-blue-100 text-sm font-medium leading-relaxed">Selamat datang di dashboard kontrol utama. Di sini Anda dapat memantau aktivitas ujian, mengelola data pengguna, dan mengatur jadwal ujian secara real-time.</p>
-          <button className="mt-8 bg-white text-blue-600 px-6 py-3 rounded-2xl font-black text-xs uppercase tracking-widest flex items-center gap-2 hover:bg-blue-50 transition-all">
+          <h2 className="text-2xl md:text-3xl font-black tracking-tighter uppercase leading-tight">Sistem Ujian Online</h2>
+          <p className="mt-4 text-blue-100 text-xs md:text-sm font-medium leading-relaxed">Kelola seluruh aktivitas ujian sekolah Anda dengan mudah dalam satu dashboard terintegrasi.</p>
+          <button className="mt-8 bg-white text-blue-600 px-6 py-3 rounded-2xl font-black text-[10px] uppercase tracking-widest flex items-center gap-2 hover:bg-blue-50 transition-all active:scale-95">
             Mulai Pengaturan <ChevronRight size={16}/>
           </button>
         </div>
-        <ShieldCheck size={200} className="absolute -right-10 -bottom-10 text-blue-500/20 rotate-12" />
+        <ShieldCheck size={180} className="absolute -right-10 -bottom-10 text-blue-500/20 rotate-12 hidden sm:block" />
       </div>
     </div>
   );
 }
 
-// --- SUB KOMPONEN: USER MANAGEMENT ---
+// --- SUB KOMPONEN USER MANAGEMENT (Tetap Sama dengan sedikit perbaikan CSS mobile) ---
 function UserManagementSection() {
   const [users, setUsers] = useState<UserData[]>([]);
   const [loading, setLoading] = useState(true);
@@ -243,7 +287,6 @@ function UserManagementSection() {
   const downloadTemplate = () => {
     const template = [
       { username: 'siswa001', nama: 'Siswa Contoh', email: 'siswa@cbt.com', password: 'password123', role: 'siswa' },
-      { username: 'guru001', nama: 'Guru Contoh', email: 'guru@cbt.com', password: 'password123', role: 'guru' },
     ];
     const ws = XLSX.utils.json_to_sheet(template);
     const wb = XLSX.utils.book_new();
@@ -316,31 +359,32 @@ function UserManagementSection() {
   };
 
   return (
-    <div className="space-y-6">
+    <div className="space-y-6 pb-10">
       <div className="flex flex-col md:flex-row justify-between items-center gap-4 bg-white p-6 rounded-3xl border shadow-sm">
-        <div className="flex items-center gap-3">
+        <div className="flex items-center gap-3 w-full md:w-auto">
           <div className="p-3 bg-blue-600 rounded-2xl text-white shadow-lg shadow-blue-100">
             <UserPlus size={24}/>
           </div>
           <div>
-            <h3 className="text-xl font-black text-slate-800 tracking-tighter uppercase">Manajemen Akun</h3>
-            <p className="text-[10px] text-slate-400 font-bold uppercase tracking-widest italic">User & Access Control</p>
+            <h3 className="text-lg md:text-xl font-black text-slate-800 tracking-tighter uppercase leading-none">Manajemen Akun</h3>
+            <p className="text-[10px] text-slate-400 font-bold uppercase tracking-widest italic mt-1">User & Access Control</p>
           </div>
         </div>
         <div className="flex gap-2 w-full md:w-auto">
-          <button onClick={downloadTemplate} className="flex-1 md:flex-none flex items-center justify-center gap-2 bg-slate-100 px-4 py-3 rounded-xl text-xs font-bold hover:bg-slate-200 transition-colors">
+          <button onClick={downloadTemplate} className="flex-1 md:flex-none flex items-center justify-center gap-2 bg-slate-100 px-4 py-3 rounded-xl text-[10px] font-bold hover:bg-slate-200 transition-colors">
             <Download size={16}/> Template
           </button>
-          <label className="flex-1 md:flex-none flex items-center justify-center gap-2 bg-blue-600 px-4 py-3 rounded-xl text-xs font-bold text-white cursor-pointer hover:bg-blue-700 transition-all shadow-lg shadow-blue-100">
-            <FileUp size={16}/> Import Excel
+          <label className="flex-1 md:flex-none flex items-center justify-center gap-2 bg-blue-600 px-4 py-3 rounded-xl text-[10px] font-bold text-white cursor-pointer hover:bg-blue-700 transition-all shadow-lg shadow-blue-100 uppercase tracking-widest">
+            <FileUp size={16}/> Import
             <input type="file" hidden accept=".xlsx, .xls" onChange={handleImportExcel} />
           </label>
         </div>
       </div>
 
-      <div className="grid lg:grid-cols-3 gap-6">
+      <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
+        {/* Form Pendaftaran */}
         <div className="bg-white p-6 rounded-3xl border shadow-sm h-fit space-y-4">
-          <h2 className="font-bold text-slate-700 flex items-center gap-2"><UserPlus size={18} className="text-blue-500"/> Registrasi Manual</h2>
+          <h2 className="font-bold text-slate-700 flex items-center gap-2 uppercase text-xs tracking-widest italic"><UserPlus size={18} className="text-blue-500"/> Registrasi Manual</h2>
           <form onSubmit={handleAddUser} className="space-y-3">
             <input placeholder="Username (ID)" required className="w-full p-4 bg-slate-50 border border-slate-100 rounded-2xl text-sm outline-none focus:border-blue-500 focus:bg-white transition-all font-medium" value={formData.username} onChange={e => setFormData({...formData, username: e.target.value})} />
             <input placeholder="Nama Lengkap" required className="w-full p-4 bg-slate-50 border border-slate-100 rounded-2xl text-sm outline-none focus:border-blue-500 focus:bg-white transition-all font-medium" value={formData.nama} onChange={e => setFormData({...formData, nama: e.target.value})} />
@@ -352,12 +396,13 @@ function UserManagementSection() {
               <option value="pengawas">Pengawas</option>
               <option value="admin">Admin</option>
             </select>
-            <button disabled={isSubmitting} className="w-full bg-slate-900 text-white py-4 rounded-2xl font-bold hover:bg-black transition-all flex justify-center shadow-lg active:scale-95 disabled:opacity-50">
+            <button disabled={isSubmitting} className="w-full bg-slate-900 text-white py-4 rounded-2xl font-black text-xs uppercase tracking-widest hover:bg-black transition-all flex justify-center shadow-lg active:scale-95 disabled:opacity-50">
               {isSubmitting ? <Loader2 className="animate-spin"/> : "Daftarkan Akun"}
             </button>
           </form>
         </div>
 
+        {/* Tabel Data User */}
         <div className="lg:col-span-2 bg-white rounded-3xl border shadow-sm overflow-hidden flex flex-col">
           <div className="p-4 border-b bg-slate-50/50 flex items-center gap-3">
             <Search size={20} className="text-slate-400 ml-2" />
@@ -369,25 +414,25 @@ function UserManagementSection() {
             />
           </div>
           <div className="overflow-x-auto">
-            <table className="w-full text-left">
-              <thead className="bg-white text-slate-400 font-black uppercase text-[10px] tracking-widest border-b">
+            <table className="w-full text-left min-w-[500px]">
+              <thead className="bg-white text-slate-400 font-black uppercase text-[9px] tracking-widest border-b">
                 <tr>
                   <th className="p-6">Informasi Akun</th>
                   <th className="p-6 text-center">Tindakan</th>
                 </tr>
               </thead>
-              <tbody className="divide-y divide-slate-50">
+              <tbody className="divide-y divide-slate-50 text-sm">
                 {loading ? (
-                  <tr><td colSpan={2} className="p-20 text-center text-slate-400 font-bold italic">Menghubungkan ke database...</td></tr>
+                  <tr><td colSpan={2} className="p-16 text-center text-slate-400 font-bold italic">Menghubungkan ke database...</td></tr>
                 ) : filteredUsers.length === 0 ? (
-                  <tr><td colSpan={2} className="p-20 text-center text-slate-400 font-bold">Data pengguna tidak ditemukan.</td></tr>
+                  <tr><td colSpan={2} className="p-16 text-center text-slate-400 font-bold">Data tidak ditemukan.</td></tr>
                 ) : filteredUsers.map((user) => (
                   <tr key={user.id} className="hover:bg-blue-50/40 transition-all group">
                     <td className="p-6">
                       <div className="flex items-center gap-4">
-                        <div className="w-12 h-12 rounded-2xl bg-slate-100 flex items-center justify-center font-black text-slate-400 uppercase shadow-inner">{user.nama?.charAt(0)}</div>
-                        <div>
-                          <div className="font-black text-slate-800 leading-tight">{user.nama}</div>
+                        <div className="w-10 h-10 md:w-12 md:h-12 rounded-2xl bg-slate-100 flex items-center justify-center font-black text-slate-400 uppercase shrink-0 shadow-inner">{user.nama?.charAt(0)}</div>
+                        <div className="min-w-0">
+                          <div className="font-black text-slate-800 leading-tight truncate">{user.nama}</div>
                           <div className="text-[10px] font-mono font-bold text-blue-500 uppercase tracking-tighter mt-1 italic">ID: {user.id} • PW: {user.password}</div>
                           <div className={`text-[9px] font-black px-3 py-1 rounded-lg uppercase w-fit mt-2 shadow-sm ${
                             user.role === 'admin' ? 'bg-orange-100 text-orange-600' : 
@@ -397,9 +442,9 @@ function UserManagementSection() {
                       </div>
                     </td>
                     <td className="p-6">
-                      <div className="flex justify-center gap-2 opacity-0 group-hover:opacity-100 transition-all scale-90 group-hover:scale-100">
-                        <button onClick={() => setEditingUser(user)} className="p-3 bg-blue-50 text-blue-600 hover:bg-blue-600 hover:text-white rounded-2xl transition-all shadow-sm" title="Edit"><Edit3 size={18}/></button>
-                        <button onClick={() => { if(confirm('Hapus pengguna ini?')) deleteDoc(doc(db, "users", user.id)).then(fetchUsers) }} className="p-3 bg-red-50 text-red-500 hover:bg-red-500 hover:text-white rounded-2xl transition-all shadow-sm" title="Hapus"><Trash2 size={18}/></button>
+                      <div className="flex justify-center gap-2 opacity-100 lg:opacity-0 lg:group-hover:opacity-100 transition-all scale-90 lg:group-hover:scale-100">
+                        <button onClick={() => setEditingUser(user)} className="p-2.5 md:p-3 bg-blue-50 text-blue-600 hover:bg-blue-600 hover:text-white rounded-xl transition-all shadow-sm" title="Edit"><Edit3 size={16}/></button>
+                        <button onClick={() => { if(confirm('Hapus pengguna?')) deleteDoc(doc(db, "users", user.id)).then(fetchUsers) }} className="p-2.5 md:p-3 bg-red-50 text-red-500 hover:bg-red-500 hover:text-white rounded-xl transition-all shadow-sm" title="Hapus"><Trash2 size={16}/></button>
                       </div>
                     </td>
                   </tr>
@@ -410,29 +455,29 @@ function UserManagementSection() {
         </div>
       </div>
 
-      {/* MODAL EDIT */}
+      {/* MODAL EDIT (Responsif) */}
       {editingUser && (
-        <div className="fixed inset-0 bg-slate-900/60 flex items-center justify-center p-4 z-[100] backdrop-blur-md">
-          <div className="bg-white w-full max-w-md rounded-[3rem] p-10 space-y-6 shadow-2xl animate-in fade-in zoom-in duration-300">
+        <div className="fixed inset-0 bg-slate-900/60 flex items-end sm:items-center justify-center p-0 sm:p-4 z-[100] backdrop-blur-md">
+          <div className="bg-white w-full max-w-md rounded-t-[2.5rem] sm:rounded-[3rem] p-8 md:p-10 space-y-6 shadow-2xl animate-in slide-in-from-bottom sm:zoom-in duration-300">
             <div className="flex justify-between items-start">
               <div>
-                <h3 className="font-black text-2xl text-slate-800 uppercase tracking-tighter">Edit Akun</h3>
-                <p className="text-[10px] font-black text-blue-500 uppercase tracking-widest mt-1">Sistem Pembaruan Data</p>
+                <h3 className="font-black text-xl md:text-2xl text-slate-800 uppercase tracking-tighter">Edit Akun</h3>
+                <p className="text-[10px] font-black text-blue-500 uppercase tracking-widest mt-1">Update Data Siswa/Guru</p>
               </div>
               <button onClick={() => setEditingUser(null)} className="p-3 bg-slate-100 rounded-2xl hover:bg-slate-200 transition-all"><X size={20}/></button>
             </div>
             <div className="space-y-4">
                <div className="space-y-1">
                  <label className="text-[10px] font-black text-slate-400 uppercase ml-2">Nama Lengkap</label>
-                 <input className="w-full p-4 bg-slate-50 border border-slate-100 rounded-2xl outline-none focus:border-blue-500 focus:bg-white font-bold transition-all" value={editingUser.nama} onChange={e => setEditingUser({...editingUser, nama: e.target.value})} />
+                 <input className="w-full p-4 bg-slate-50 border border-slate-100 rounded-2xl outline-none focus:border-blue-500 focus:bg-white font-bold transition-all text-sm" value={editingUser.nama} onChange={e => setEditingUser({...editingUser, nama: e.target.value})} />
                </div>
                <div className="space-y-1">
                  <label className="text-[10px] font-black text-slate-400 uppercase ml-2">Password Baru</label>
-                 <input className="w-full p-4 bg-slate-50 border border-slate-100 rounded-2xl outline-none focus:border-blue-500 focus:bg-white font-bold transition-all" value={editingUser.password} onChange={e => setEditingUser({...editingUser, password: e.target.value})} />
+                 <input className="w-full p-4 bg-slate-50 border border-slate-100 rounded-2xl outline-none focus:border-blue-500 focus:bg-white font-bold transition-all text-sm" value={editingUser.password} onChange={e => setEditingUser({...editingUser, password: e.target.value})} />
                </div>
                <div className="space-y-1">
-                 <label className="text-[10px] font-black text-slate-400 uppercase ml-2">Role Akses</label>
-                 <select className="w-full p-4 bg-slate-50 border border-slate-100 rounded-2xl font-black outline-none" value={editingUser.role} onChange={e => setEditingUser({...editingUser, role: e.target.value})}>
+                 <label className="text-[10px] font-black text-slate-400 uppercase ml-2">Peran Akses</label>
+                 <select className="w-full p-4 bg-slate-50 border border-slate-100 rounded-2xl font-black outline-none text-sm" value={editingUser.role} onChange={e => setEditingUser({...editingUser, role: e.target.value})}>
                   <option value="siswa">Siswa</option>
                   <option value="guru">Guru</option>
                   <option value="pengawas">Pengawas</option>
@@ -440,7 +485,7 @@ function UserManagementSection() {
                 </select>
                </div>
             </div>
-            <button onClick={handleUpdateUser} disabled={isSubmitting} className="w-full bg-blue-600 text-white py-5 rounded-[2rem] font-black shadow-xl shadow-blue-200 flex justify-center gap-2 hover:bg-blue-700 transition-all active:scale-95 disabled:opacity-50 tracking-widest uppercase text-xs">
+            <button onClick={handleUpdateUser} disabled={isSubmitting} className="w-full bg-blue-600 text-white py-4 md:py-5 rounded-2xl md:rounded-[2rem] font-black shadow-xl shadow-blue-200 flex justify-center gap-2 hover:bg-blue-700 transition-all active:scale-95 disabled:opacity-50 tracking-widest uppercase text-[10px]">
               {isSubmitting ? <Loader2 className="animate-spin"/> : "Simpan Perubahan"}
             </button>
           </div>

@@ -40,15 +40,31 @@ export default function HalamanSiswa() {
     const unsubscribe = onAuthStateChanged(auth, async (user: FirebaseUser | null) => {
       if (user) {
         try {
-          const userDoc = await getDoc(doc(db, "users", user.email?.split('@')[0] || "")); 
-          // Catatan: Sesuaikan key doc dengan sistem login Anda (UID atau ID/Username)
-          if (userDoc.exists()) {
-            setUserData(userDoc.data());
-            setAuthorized(true);
+          // 1. Ambil data role dari users_auth menggunakan UID (Sama dengan logika Admin)
+          const authDoc = await getDoc(doc(db, "users_auth", user.uid));
+          
+          if (authDoc.exists()) {
+            const authData = authDoc.data();
+            
+            // 2. Pastikan role-nya adalah siswa
+            if (authData.role === 'siswa') {
+              // 3. Ambil detail profil siswa dari koleksi 'users' menggunakan username
+              const profileDoc = await getDoc(doc(db, "users", authData.username));
+              if (profileDoc.exists()) {
+                setUserData(profileDoc.data());
+                setAuthorized(true);
+              } else {
+                router.push('/login');
+              }
+            } else {
+              // Jika role bukan siswa (misal admin nyasar ke hal siswa), lempar balik
+              router.push('/login');
+            }
           } else {
             router.push('/login');
           }
         } catch (error) {
+          console.error("Auth Error:", error);
           router.push('/login');
         }
       } else {

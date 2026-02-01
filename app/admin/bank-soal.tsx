@@ -7,15 +7,26 @@ import {
 } from 'firebase/firestore';
 import { ref, uploadBytesResumable, getDownloadURL } from 'firebase/storage';
 import { 
-  Plus, Image as ImageIcon, Music, Save, Trash2, 
-  HelpCircle, Loader2, FileText, CheckCircle2, Edit3, Search, X, ArrowLeft, FolderPlus
+  Plus, Music, Trash2, 
+  HelpCircle, Loader2, CheckCircle2, Edit3, Search, X, ArrowLeft, FolderPlus
 } from 'lucide-react';
 import dynamic from 'next/dynamic';
 
-const ReactQuill = dynamic(() => import('react-quill-new'), { 
+// Import modul untuk resize gambar (Pastikan sudah install library-nya)
+const ImageResize = dynamic(() => import('quill-image-resize-module-react'), { ssr: false });
+
+const ReactQuill = dynamic(async () => {
+  const { default: RQ } = await import('react-quill-new');
+  // @ts-ignore
+  const { Quill } = RQ;
+  const ImageResize = (await import('quill-image-resize-module-react')).default;
+  Quill.register('modules/imageResize', ImageResize);
+  return RQ;
+}, { 
   ssr: false,
-  loading: () => <div className="h-64 bg-slate-50 animate-pulse rounded-2xl" />
+  loading: () => <div className="h-80 bg-slate-50 animate-pulse rounded-2xl border-2 border-slate-200" />
 });
+
 import 'react-quill-new/dist/quill.snow.css';
 
 export default function BankSoalSection() {
@@ -24,7 +35,7 @@ export default function BankSoalSection() {
   const [loading, setLoading] = useState(false);
   const [soalList, setSoalList] = useState<any[]>([]);
   const [mapelList, setMapelList] = useState<{id: string, nama: string}[]>([]);
-  const [kelompokList, setKelompokList] = useState<{id: string, nama: string, mapel: string}[]>([]);
+  const [kelompokList, setKelompokList] = useState<{id: string, nama: string}[]>([]); // Hapus mapel di sini
   
   const [filterMapel, setFilterMapel] = useState('all');
   const [searchQuery, setSearchQuery] = useState('');
@@ -43,7 +54,7 @@ export default function BankSoalSection() {
   const [media, setMedia] = useState<{type: string, url: string} | null>(null);
   const [uploading, setUploading] = useState(false);
 
-  const [newKelompok, setNewKelompok] = useState({ nama: '', mapel: '' });
+  const [newKelompok, setNewKelompok] = useState({ nama: '' }); // Modal kelompok hanya butuh nama
 
   const modules = {
     toolbar: [
@@ -54,6 +65,10 @@ export default function BankSoalSection() {
       ['link', 'image', 'video'],
       ['clean']
     ],
+    imageResize: {
+      parchment: null,
+      modules: ['Resize', 'DisplaySize', 'Toolbar']
+    }
   };
 
   useEffect(() => {
@@ -72,28 +87,22 @@ export default function BankSoalSection() {
     return () => { unsubSoal(); unsubKelompok(); };
   }, []);
 
-  const handleKelompokChange = (nama: string) => {
-    setNamaBankSoal(nama);
-    const found = kelompokList.find(k => k.nama === nama);
-    if (found) setSelectedMapel(found.mapel);
-  };
-
   const tambahKelompok = async () => {
-    if (!newKelompok.nama || !newKelompok.mapel) return alert("Isi nama kelompok dan mapel!");
+    if (!newKelompok.nama) return alert("Isi nama kelompok!");
     await addDoc(collection(db, "kelompok_soal"), newKelompok);
-    setNewKelompok({ nama: '', mapel: '' });
+    setNewKelompok({ nama: '' });
     setShowKelompokModal(false);
   };
 
-  const handleUpload = async (e: any, type: 'image' | 'audio') => {
+  const handleUploadAudio = async (e: any) => {
     const file = e.target.files?.[0];
     if (!file) return;
     setUploading(true);
-    const storageRef = ref(storage, `bank_soal/${Date.now()}_${file.name}`);
+    const storageRef = ref(storage, `bank_soal/audio/${Date.now()}_${file.name}`);
     const uploadTask = uploadBytesResumable(storageRef, file);
     uploadTask.on('state_changed', null, null, () => {
       getDownloadURL(uploadTask.snapshot.ref).then((url) => {
-        setMedia({ type, url });
+        setMedia({ type: 'audio', url });
         setUploading(false);
       });
     });
@@ -102,7 +111,7 @@ export default function BankSoalSection() {
   const simpanSoal = async () => {
     let finalKunci = jawabanBenar;
     if (tipeSoal === 'pencocokan') finalKunci = JSON.stringify(pairs);
-    if (!pertanyaan || !selectedMapel || !namaBankSoal) return alert("Lengkapi data!");
+    if (!pertanyaan || !selectedMapel || !namaBankSoal) return alert("Lengkapi data (Kelompok, Mapel, dan Pertanyaan)!");
     
     setLoading(true);
     const payload = {
@@ -119,7 +128,7 @@ export default function BankSoalSection() {
       }
       resetForm();
       setView('list');
-    } catch (error) { alert("Gagal!"); } finally { setLoading(false); }
+    } catch (error) { alert("Gagal menyimpan!"); } finally { setLoading(false); }
   };
 
   const handleEdit = (soal: any) => {
@@ -178,12 +187,13 @@ export default function BankSoalSection() {
             </div>
           </div>
 
+          {/* Search & Filter */}
           <div className="bg-white p-4 rounded-3xl border shadow-sm flex flex-col md:flex-row gap-3">
             <div className="relative flex-1">
               <Search size={18} className="absolute left-4 top-1/2 -translate-y-1/2 text-slate-400" />
-              <input placeholder="Cari soal atau nama bank..." className="w-full pl-12 pr-4 py-4 bg-slate-50 border-none rounded-2xl text-sm font-bold outline-none focus:ring-2 focus:ring-blue-100" value={searchQuery} onChange={(e) => setSearchQuery(e.target.value)} />
+              <input placeholder="Cari soal atau nama bank..." className="w-full pl-12 pr-4 py-4 bg-slate-50 border-2 border-slate-100 rounded-2xl text-sm font-bold outline-none focus:ring-2 focus:ring-blue-100 focus:border-blue-400" value={searchQuery} onChange={(e) => setSearchQuery(e.target.value)} />
             </div>
-            <select className="bg-slate-50 px-6 py-4 rounded-2xl text-sm font-bold outline-none text-slate-600 border-none cursor-pointer" value={filterMapel} onChange={(e) => setFilterMapel(e.target.value)}>
+            <select className="bg-slate-50 px-6 py-4 rounded-2xl text-sm font-bold outline-none text-slate-600 border-2 border-slate-100 cursor-pointer" value={filterMapel} onChange={(e) => setFilterMapel(e.target.value)}>
               <option value="all">Semua Mata Pelajaran</option>
               {mapelList.map(m => <option key={m.id} value={m.nama}>{m.nama}</option>)}
             </select>
@@ -234,18 +244,21 @@ export default function BankSoalSection() {
              <h2 className="text-sm font-black text-slate-800 uppercase tracking-widest">{isEditMode ? 'Editor Mode' : 'Pembuat Soal'}</h2>
           </div>
 
-          <div className="bg-white p-8 md:p-12 rounded-[3rem] border shadow-sm space-y-8">
+          <div className="bg-white p-8 md:p-12 rounded-[3rem] border-2 border-slate-100 shadow-sm space-y-8">
             <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
               <div className="space-y-2">
                 <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest ml-1">Kelompok Soal</label>
-                <select className="w-full p-4 bg-slate-50 border-none rounded-2xl text-xs font-bold outline-none ring-2 ring-transparent focus:ring-blue-100" value={namaBankSoal} onChange={(e) => handleKelompokChange(e.target.value)}>
+                <select className="w-full p-4 bg-slate-50 border-2 border-slate-100 rounded-2xl text-xs font-bold outline-none focus:border-blue-400" value={namaBankSoal} onChange={(e) => setNamaBankSoal(e.target.value)}>
                   <option value="">Pilih Kelompok</option>
                   {kelompokList.map(k => <option key={k.id} value={k.nama}>{k.nama}</option>)}
                 </select>
               </div>
               <div className="space-y-2">
-                <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest ml-1">Mata Pelajaran (Otomatis)</label>
-                <input readOnly className="w-full p-4 bg-slate-100 border-none rounded-2xl text-xs font-bold text-slate-500 outline-none" value={selectedMapel || 'Pilih kelompok dulu...'} />
+                <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest ml-1">Mata Pelajaran</label>
+                <select className="w-full p-4 bg-slate-50 border-2 border-slate-100 rounded-2xl text-xs font-bold outline-none focus:border-blue-400" value={selectedMapel} onChange={(e) => setSelectedMapel(e.target.value)}>
+                  <option value="">Pilih Mata Pelajaran</option>
+                  {mapelList.map(m => <option key={m.id} value={m.nama}>{m.nama}</option>)}
+                </select>
               </div>
               <div className="space-y-2">
                 <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest ml-1">Tipe Soal</label>
@@ -261,24 +274,21 @@ export default function BankSoalSection() {
 
             <div className="space-y-2">
               <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest ml-1">Pertanyaan</label>
-              <div className="bg-slate-50 rounded-[2rem] overflow-hidden border-none quill-large">
-                <ReactQuill theme="snow" value={pertanyaan} onChange={setPertanyaan} modules={modules} placeholder="Tulis rincian pertanyaan di sini..." />
+              <div className="bg-slate-50 rounded-[2rem] overflow-hidden border-2 border-slate-200 quill-large min-h-[300px]">
+                <style>{`.ql-editor { min-height: 250px; font-size: 16px; }`}</style>
+                <ReactQuill theme="snow" value={pertanyaan} onChange={setPertanyaan} modules={modules} placeholder="Tulis rincian pertanyaan di sini... Anda bisa mengunggah dan mengatur ukuran gambar di sini." />
               </div>
             </div>
 
-            <div className="grid grid-cols-2 gap-4">
-               <label className="cursor-pointer p-4 bg-slate-50 rounded-2xl flex items-center justify-center gap-3 text-slate-500 hover:bg-blue-50 transition-all border-2 border-dashed border-slate-200">
-                  <ImageIcon size={20} className="text-blue-500"/> <span className="text-xs font-bold uppercase">Unggah Gambar</span>
-                  <input type="file" hidden accept="image/*" onChange={(e) => handleUpload(e, 'image')} />
-               </label>
-               <label className="cursor-pointer p-4 bg-slate-50 rounded-2xl flex items-center justify-center gap-3 text-slate-500 hover:bg-purple-50 transition-all border-2 border-dashed border-slate-200">
-                  <Music size={20} className="text-purple-500"/> <span className="text-xs font-bold uppercase">Unggah Audio</span>
-                  <input type="file" hidden accept="audio/*" onChange={(e) => handleUpload(e, 'audio')} />
+            <div className="grid grid-cols-1 gap-4">
+               <label className="cursor-pointer p-4 bg-slate-50 rounded-2xl flex items-center justify-center gap-3 text-slate-500 hover:bg-purple-50 transition-all border-2 border-dashed border-slate-300">
+                  <Music size={20} className="text-purple-500"/> <span className="text-xs font-bold uppercase">Unggah Audio (Listening/Musik)</span>
+                  <input type="file" hidden accept="audio/*" onChange={handleUploadAudio} />
                </label>
             </div>
 
             {media && (
-              <div className="p-4 bg-blue-50 rounded-2xl flex items-center justify-between animate-in zoom-in">
+              <div className="p-4 bg-blue-50 rounded-2xl flex items-center justify-between animate-in zoom-in border border-blue-100">
                 <div className="flex items-center gap-3">
                   <CheckCircle2 className="text-blue-600"/>
                   <span className="text-xs font-black text-blue-600 uppercase tracking-widest">Media {media.type} berhasil dipasang</span>
@@ -287,15 +297,16 @@ export default function BankSoalSection() {
               </div>
             )}
 
-            <div className="space-y-4 pt-6 border-t">
+            <div className="space-y-4 pt-6 border-t-2 border-slate-100">
               <h4 className="text-[10px] font-black text-slate-400 uppercase tracking-widest ml-1">Konfigurasi Jawaban</h4>
+              {/* --- Logika input jawaban tetap sama --- */}
               {tipeSoal === 'pencocokan' && (
                 <div className="grid grid-cols-1 gap-3">
                   {pairs.map((p, idx) => (
                     <div key={p.id} className="flex gap-3 items-center animate-in slide-in-from-left-2">
-                      <input placeholder="Kiri" className="flex-1 p-4 bg-slate-50 border-none rounded-2xl text-sm font-bold outline-none" value={p.key} onChange={(e) => { const n = [...pairs]; n[idx].key = e.target.value; setPairs(n); }} />
+                      <input placeholder="Kiri" className="flex-1 p-4 bg-slate-50 border-2 border-slate-100 rounded-2xl text-sm font-bold outline-none" value={p.key} onChange={(e) => { const n = [...pairs]; n[idx].key = e.target.value; setPairs(n); }} />
                       <div className="text-slate-300">→</div>
-                      <input placeholder="Kanan" className="flex-1 p-4 bg-slate-50 border-none rounded-2xl text-sm font-bold outline-none" value={p.value} onChange={(e) => { const n = [...pairs]; n[idx].value = e.target.value; setPairs(n); }} />
+                      <input placeholder="Kanan" className="flex-1 p-4 bg-slate-50 border-2 border-slate-100 rounded-2xl text-sm font-bold outline-none" value={p.value} onChange={(e) => { const n = [...pairs]; n[idx].value = e.target.value; setPairs(n); }} />
                       <button onClick={() => setPairs(pairs.filter(i => i.id !== p.id))} className="p-2 text-red-400 hover:text-red-600"><Trash2 size={20}/></button>
                     </div>
                   ))}
@@ -308,14 +319,14 @@ export default function BankSoalSection() {
                   {['a', 'b', 'c', 'd', 'e'].map(l => (
                     <div key={l} className="flex gap-4 items-center">
                        <span className="w-8 h-8 rounded-full bg-slate-100 flex items-center justify-center text-[10px] font-black text-slate-400 uppercase">{l}</span>
-                       <input placeholder={`Input Opsi ${l.toUpperCase()}`} className="flex-1 p-4 bg-slate-50 border-none rounded-2xl text-sm font-bold outline-none" value={(opsi as any)[l]} onChange={(e) => setOpsi({...opsi, [l]: e.target.value})} />
+                       <input placeholder={`Input Opsi ${l.toUpperCase()}`} className="flex-1 p-4 bg-slate-50 border-2 border-slate-100 rounded-2xl text-sm font-bold outline-none" value={(opsi as any)[l]} onChange={(e) => setOpsi({...opsi, [l]: e.target.value})} />
                     </div>
                   ))}
                   <div className="mt-4">
                     <label className="text-[10px] font-black text-green-600 uppercase tracking-widest ml-1">Pilih Kunci Jawaban</label>
                     <div className="flex gap-2 mt-2">
                       {['a','b','c','d','e'].map(l => (opsi as any)[l] && (
-                        <button key={l} onClick={() => setJawabanBenar(l)} className={`flex-1 py-4 rounded-2xl font-black uppercase text-xs border-2 transition-all ${jawabanBenar === l ? 'bg-green-600 border-green-600 text-white shadow-xl shadow-green-100' : 'bg-white text-slate-300 border-slate-100'}`}>
+                        <button key={l} onClick={() => setJawabanBenar(l)} className={`flex-1 py-4 rounded-2xl font-black uppercase text-xs border-2 transition-all ${jawabanBenar === l ? 'bg-green-600 border-green-600 text-white shadow-xl shadow-green-100' : 'bg-white text-slate-300 border-slate-200'}`}>
                           Opsi {l}
                         </button>
                       ))}
@@ -327,7 +338,7 @@ export default function BankSoalSection() {
               {tipeSoal === 'benar_salah' && (
                 <div className="flex gap-4">
                   {['benar', 'salah'].map(v => (
-                    <button key={v} onClick={() => setJawabanBenar(v)} className={`flex-1 py-6 rounded-[2rem] font-black uppercase text-sm border-4 transition-all ${jawabanBenar === v ? 'bg-green-600 border-green-600 text-white shadow-2xl shadow-green-200' : 'bg-white text-slate-300 border-slate-100'}`}>
+                    <button key={v} onClick={() => setJawabanBenar(v)} className={`flex-1 py-6 rounded-[2rem] font-black uppercase text-sm border-4 transition-all ${jawabanBenar === v ? 'bg-green-600 border-green-600 text-white shadow-2xl shadow-green-200' : 'bg-white text-slate-300 border-slate-200'}`}>
                       {v}
                     </button>
                   ))}
@@ -337,7 +348,7 @@ export default function BankSoalSection() {
               {(tipeSoal === 'isian' || tipeSoal === 'uraian') && (
                 <div className="space-y-2">
                   <label className="text-[10px] font-black text-green-600 uppercase tracking-widest ml-1">Kunci Jawaban Teks</label>
-                  <input placeholder="Ketik kunci jawaban yang benar..." className="w-full p-5 bg-green-50 border-none rounded-2xl text-sm font-bold text-green-700 outline-none" value={jawabanBenar} onChange={(e) => setJawabanBenar(e.target.value)} />
+                  <input placeholder="Ketik kunci jawaban yang benar..." className="w-full p-5 bg-green-50 border-2 border-green-100 rounded-2xl text-sm font-bold text-green-700 outline-none" value={jawabanBenar} onChange={(e) => setJawabanBenar(e.target.value)} />
                 </div>
               )}
             </div>
@@ -345,9 +356,9 @@ export default function BankSoalSection() {
             <div className="flex gap-4 items-end pt-10">
               <div className="w-32">
                 <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest ml-1">Bobot Skor</label>
-                <input type="number" className="w-full p-5 bg-slate-50 rounded-2xl mt-2 font-black text-center text-lg border-none" value={bobot} onChange={(e) => setBobot(Number(e.target.value))} />
+                <input type="number" className="w-full p-5 bg-slate-50 rounded-2xl mt-2 font-black text-center text-lg border-2 border-slate-200 focus:border-blue-500 outline-none transition-all" value={bobot} onChange={(e) => setBobot(Number(e.target.value))} />
               </div>
-              <button onClick={simpanSoal} disabled={loading || uploading} className={`flex-1 py-5 rounded-[2rem] font-black text-xs uppercase tracking-widest text-white shadow-2xl transition-all active:scale-95 ${isEditMode ? 'bg-orange-500 shadow-orange-200' : 'bg-blue-600 shadow-blue-200'}`}>
+              <button onClick={simpanSoal} disabled={loading || uploading} className={`flex-1 py-5 rounded-[2rem] font-black text-xs uppercase tracking-widest text-white shadow-2xl transition-all active:scale-95 ${isEditMode ? 'bg-orange-500 shadow-orange-200 hover:bg-orange-600' : 'bg-blue-600 shadow-blue-200 hover:bg-blue-700'}`}>
                 {loading ? <Loader2 className="animate-spin mx-auto"/> : isEditMode ? "Perbarui Soal Sekarang" : "Simpan Soal Baru"}
               </button>
             </div>
@@ -366,17 +377,10 @@ export default function BankSoalSection() {
             <div className="space-y-4">
               <div className="space-y-2">
                 <label className="text-[10px] font-black text-slate-400 uppercase">Nama Kelompok</label>
-                <input placeholder="Misal: UAS Ganjil 2024" className="w-full p-4 bg-slate-50 border-none rounded-2xl text-sm font-bold outline-none" value={newKelompok.nama} onChange={(e) => setNewKelompok({...newKelompok, nama: e.target.value})} />
-              </div>
-              <div className="space-y-2">
-                <label className="text-[10px] font-black text-slate-400 uppercase">Pilih Mata Pelajaran</label>
-                <select className="w-full p-4 bg-slate-50 border-none rounded-2xl text-sm font-bold outline-none" value={newKelompok.mapel} onChange={(e) => setNewKelompok({...newKelompok, mapel: e.target.value})}>
-                   <option value="">Pilih Mapel</option>
-                   {mapelList.map(m => <option key={m.id} value={m.nama}>{m.nama}</option>)}
-                </select>
+                <input placeholder="Misal: UAS Ganjil 2024" className="w-full p-4 bg-slate-50 border-2 border-slate-100 rounded-2xl text-sm font-bold outline-none focus:border-blue-400" value={newKelompok.nama} onChange={(e) => setNewKelompok({...newKelompok, nama: e.target.value})} />
               </div>
             </div>
-            <button onClick={tambahKelompok} className="w-full bg-slate-900 text-white py-5 rounded-[2rem] font-black text-xs uppercase tracking-widest hover:bg-black transition-all">Simpan Kelompok</button>
+            <button onClick={tambahKelompok} className="w-full bg-slate-900 text-white py-5 rounded-[2rem] font-black text-xs uppercase tracking-widest hover:bg-black transition-all shadow-xl">Simpan Kelompok</button>
           </div>
         </div>
       )}

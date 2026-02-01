@@ -19,24 +19,20 @@ const ReactQuill = dynamic(async () => {
   const { Quill } = RQ;
 
   if (typeof window !== 'undefined') {
-    // 1. Ambil Parchment dari internal Quill v2
-    const Parchment = Quill.import('parchment');
+    // Mengambil Parchment dengan tipe 'any' untuk menghindari validasi ketat TS
+    const Parchment = (Quill as any).import('parchment');
     
-    // 2. Gunakan 'as any' agar TS tidak komplain saat kita memodifikasi strukturnya
-    const parchmentAny = Parchment as any;
-    
-    if (parchmentAny && !parchmentAny.Attributor) {
-      parchmentAny.Attributor = {
-        // Menggunakan properti yang ada di Quill v2 sebagai fallback
-        Style: Quill.import('attributors/style/size'), 
+    // Memberikan definisi dummy agar plugin image-resize tidak crash
+    if (Parchment && !Parchment.Attributor) {
+      Parchment.Attributor = {
+        Style: (Quill as any).import('attributors/style/size'),
       };
     }
     
-    // 3. Daftarkan kembali ke objek Quill
-    (Quill as any).Parchment = parchmentAny;
+    (Quill as any).Parchment = Parchment;
     window.Quill = Quill;
 
-    // 4. Impor dan daftarkan plugin image resize
+    // Impor plugin secara dinamis
     const ImageResize = (await import('quill-image-resize-module-react')).default;
     Quill.register('modules/imageResize', ImageResize);
   }

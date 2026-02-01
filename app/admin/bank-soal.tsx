@@ -275,7 +275,11 @@ export default function BankSoalSection() {
             <div className="space-y-2">
               <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest ml-1">Pertanyaan</label>
               <div className="bg-slate-50 rounded-[2rem] overflow-hidden border-2 border-slate-200 quill-large min-h-[300px]">
-                <style>{`.ql-editor { min-height: 250px; font-size: 16px; }`}</style>
+                <style>{`
+                  .ql-editor { min-height: 250px; font-size: 16px; }
+                  .ql-editor img { margin: 10px; cursor: pointer; } 
+                  .ql-editor .ql-video { width: 100%; height: 400px; }
+                `}</style>
                 <ReactQuill theme="snow" value={pertanyaan} onChange={setPertanyaan} modules={modules} placeholder="Tulis rincian pertanyaan di sini... Anda bisa mengunggah dan mengatur ukuran gambar di sini." />
               </div>
             </div>

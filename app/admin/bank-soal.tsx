@@ -49,6 +49,7 @@ export default function BankSoalSection() {
   
   const [filterMapel, setFilterMapel] = useState('all');
   const [searchQuery, setSearchQuery] = useState('');
+  const [selectedIds, setSelectedIds] = useState<string[]>([]);
 
   const [isEditMode, setIsEditMode] = useState(false);
   const [currentId, setCurrentId] = useState('');
@@ -96,6 +97,26 @@ export default function BankSoalSection() {
 
     return () => { unsubSoal(); unsubKelompok(); };
   }, []);
+
+  const handleBulkDelete = async () => {
+    if (selectedIds.length === 0) return;
+    if (!confirm(`Hapus ${selectedIds.length} soal yang dipilih?`)) return;
+
+    setLoading(true);
+    try {
+      const batch = writeBatch(db);
+      selectedIds.forEach((id) => {
+        batch.delete(doc(db, "bank_soal", id));
+      });
+      await batch.commit();
+      setSelectedIds([]);
+      alert("Berhasil menghapus soal terpilih!");
+    } catch (error) {
+      alert("Gagal menghapus soal!");
+    } finally {
+      setLoading(false);
+    }
+  };
 
   const downloadTemplate = () => {
     const template = [
@@ -179,6 +200,7 @@ export default function BankSoalSection() {
     setOpsi({ a: '', b: '', c: '', d: '', e: '' }); setJawabanBenar('');
     setPairs([{ id: Date.now(), key: '', value: '' }]); setBobot(1);
     setNamaBankSoal(''); setSelectedMapel(''); setTipeSoal('pilihan_ganda');
+    setSelectedIds([]);
   };
 
   const filteredSoal = soalList.filter(s => {
@@ -202,6 +224,9 @@ export default function BankSoalSection() {
               <p className="text-[10px] text-slate-400 font-bold uppercase tracking-widest">{soalList.length} Soal terdaftar</p>
             </div>
             <div className="flex flex-wrap gap-2 w-full md:w-auto">
+              {selectedIds.length > 0 && (
+                <button onClick={handleBulkDelete} className="flex-1 md:flex-none flex items-center justify-center gap-2 bg-red-600 text-white px-6 py-3 rounded-2xl font-black text-xs uppercase hover:bg-red-700 shadow-lg shadow-red-200 transition-all animate-in zoom-in"><Trash2 size={18}/> Hapus ({selectedIds.length})</button>
+              )}
               <button onClick={downloadTemplate} className="flex-1 md:flex-none flex items-center justify-center gap-2 bg-emerald-50 text-emerald-600 px-4 py-3 rounded-2xl font-bold text-xs uppercase hover:bg-emerald-100 transition-all"><Download size={18}/> Template</button>
               <label className="flex-1 md:flex-none cursor-pointer flex items-center justify-center gap-2 bg-amber-50 text-amber-600 px-4 py-3 rounded-2xl font-bold text-xs uppercase hover:bg-amber-100 transition-all"><FileUp size={18}/> Import<input type="file" hidden accept=".xlsx, .xls" onChange={handleImportExcel} /></label>
               <button onClick={() => setShowKelompokModal(true)} className="flex-1 md:flex-none flex items-center justify-center gap-2 bg-slate-100 text-slate-600 px-4 py-3 rounded-2xl font-bold text-xs uppercase hover:bg-slate-200 transition-all"><FolderPlus size={18}/> Kelompok</button>
@@ -212,22 +237,11 @@ export default function BankSoalSection() {
           <div className="bg-white p-4 rounded-3xl border shadow-sm flex flex-col md:flex-row gap-4">
             <div className="relative flex-1">
               <Search size={18} className="absolute left-4 top-1/2 -translate-y-1/2 text-slate-400" />
-              <input 
-                placeholder="Cari soal atau nama kelompok..." 
-                className="w-full pl-12 pr-4 py-4 bg-slate-50 border-2 border-slate-100 rounded-2xl text-sm font-bold outline-none focus:ring-2 focus:ring-blue-100" 
-                value={searchQuery} 
-                onChange={(e) => setSearchQuery(e.target.value)} 
-              />
+              <input placeholder="Cari soal atau nama kelompok..." className="w-full pl-12 pr-4 py-4 bg-slate-50 border-2 border-slate-100 rounded-2xl text-sm font-bold outline-none focus:ring-2 focus:ring-blue-100" value={searchQuery} onChange={(e) => setSearchQuery(e.target.value)} />
             </div>
-            <select 
-              className="md:w-64 p-4 bg-slate-50 border-2 border-slate-100 rounded-2xl text-sm font-bold outline-none focus:ring-2 focus:ring-blue-100"
-              value={filterMapel}
-              onChange={(e) => setFilterMapel(e.target.value)}
-            >
+            <select className="md:w-64 p-4 bg-slate-50 border-2 border-slate-100 rounded-2xl text-sm font-bold outline-none focus:ring-2 focus:ring-blue-100" value={filterMapel} onChange={(e) => setFilterMapel(e.target.value)}>
               <option value="all">Semua Mata Pelajaran</option>
-              {mapelList.map(m => (
-                <option key={m.id} value={m.nama}>{m.nama}</option>
-              ))}
+              {mapelList.map(m => <option key={m.id} value={m.nama}>{m.nama}</option>)}
             </select>
           </div>
 
@@ -238,17 +252,17 @@ export default function BankSoalSection() {
                 <p className="text-slate-400 font-bold italic text-sm">Belum ada soal ditemukan.</p>
               </div>
             ) : filteredSoal.map((s) => (
-              <div key={s.id} className="bg-white p-4 rounded-2xl border shadow-sm flex flex-col md:flex-row items-start md:items-center gap-4 transition-all hover:border-blue-200">
+              <div key={s.id} className={`bg-white p-4 rounded-2xl border shadow-sm flex flex-col md:flex-row items-start md:items-center gap-4 transition-all hover:border-blue-200 ${selectedIds.includes(s.id) ? 'border-blue-500 bg-blue-50/30' : ''}`}>
+                <input type="checkbox" className="w-5 h-5 rounded-lg border-2 border-slate-200 checked:bg-blue-600 transition-all cursor-pointer" checked={selectedIds.includes(s.id)} onChange={(e) => {
+                  if (e.target.checked) setSelectedIds([...selectedIds, s.id]);
+                  else setSelectedIds(selectedIds.filter(id => id !== s.id));
+                }} />
+                
                 <div className="flex-1 min-w-0">
                   <div className="flex items-center gap-2 mb-1 flex-wrap">
                     <span className="text-[9px] font-black text-blue-600 uppercase bg-blue-50 px-2 py-0.5 rounded-lg">{s.namaBankSoal}</span>
                     <span className="text-[9px] font-bold text-slate-400 uppercase">{s.mapel}</span>
-                    
-                    {/* Menambahkan Label Tipe Soal */}
-                    <span className="text-[9px] font-bold text-amber-600 uppercase bg-amber-50 px-2 py-0.5 rounded-lg">
-                      {s.tipe?.replace('_', ' ') || 'Pilihan Ganda'}
-                    </span>
-
+                    <span className="text-[9px] font-bold text-amber-600 uppercase bg-amber-50 px-2 py-0.5 rounded-lg">{s.tipe?.replace('_', ' ') || 'pilihan ganda'}</span>
                     {s.pertanyaan?.includes('<img') && (
                       <span title="Berisi Gambar">
                         <ImageIcon size={14} className="text-purple-400" />

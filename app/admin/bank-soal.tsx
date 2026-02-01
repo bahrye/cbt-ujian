@@ -15,19 +15,21 @@ import dynamic from 'next/dynamic';
 // Import modul secara dinamis dan daftarkan ImageResize ke Quill
 // @ts-ignore
 const ReactQuill = dynamic(async () => {
+  // 1. Impor library utama
   const { default: RQ } = await import('react-quill-new');
   const { Quill } = RQ;
 
-  // SOLUSI UTAMA: Daftarkan Quill ke window secara global sebelum import plugin
+  // 2. DAFTARKAN KE WINDOW SECARA PAKSA
+  // Ini harus dilakukan sebelum mengimpor plugin imageResize
   if (typeof window !== 'undefined') {
     (window as any).Quill = Quill;
   }
 
-  // Import plugin setelah Quill ada di window
+  // 3. Impor plugin setelah Quill dipastikan ada di window
   // @ts-ignore
   const ImageResize = (await import('quill-image-resize-module-react')).default;
   
-  // Daftarkan modul ke Quill
+  // 4. Daftarkan modul
   Quill.register('modules/imageResize', ImageResize);
   
   return RQ;
@@ -259,18 +261,19 @@ export default function BankSoalSection() {
               
               /* Memastikan Toolbar Resize Gambar Terlihat Jelas */
               .ql-image-resizer-toolbar {
-                background-color: #1e293b !important; /* Warna Slate-800 */
+                background-color: #1e293b !important; /* Warna gelap agar kontras */
                 border-radius: 8px !important;
+                display: flex !important;
                 padding: 4px !important;
-                z-index: 100 !important;
+                z-index: 9999 !important; /* Pastikan di atas gambar */
               }
-              
+
               .ql-image-resizer-toolbar span {
                 color: white !important;
+                padding: 2px 8px !important;
                 border: 1px solid #475569 !important;
                 margin: 0 2px !important;
-                padding: 2px 5px !important;
-                background: #334155 !important;
+                cursor: pointer !important;
               }
 
               .ql-image-resizer-toolbar span:hover {

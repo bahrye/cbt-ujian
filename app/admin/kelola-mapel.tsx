@@ -97,32 +97,49 @@ export default function KelolaMapelSection() {
 
       {/* Daftar Tabel Mata Pelajaran */}
       <div className="md:col-span-2 bg-white rounded-3xl border shadow-sm overflow-hidden">
-        <table className="w-full text-left">
-          <thead className="bg-slate-50 text-slate-400 font-black uppercase text-[9px] tracking-widest border-b">
+        <table className="w-full text-left table-fixed"> {/* Tambahkan table-fixed agar lebar kolom konsisten */}
+            <thead className="bg-slate-50 text-slate-400 font-black uppercase text-[9px] tracking-widest border-b">
             <tr>
-              <th className="p-6">Nama Mata Pelajaran</th>
-              <th className="p-6 text-center">Aksi</th>
+                <th className="p-6 w-2/3">Nama Mata Pelajaran</th> {/* Atur lebar 2/3 */}
+                <th className="p-6 text-center w-1/3">Aksi</th>     {/* Atur lebar 1/3 */}
             </tr>
-          </thead>
-          <tbody className="divide-y divide-slate-50">
+            </thead>
+            <tbody className="divide-y divide-slate-50">
             {loading ? (
-              <tr><td colSpan={2} className="p-10 text-center"><Loader2 className="animate-spin mx-auto text-slate-300"/></td></tr>
+                <tr><td colSpan={2} className="p-10 text-center"><Loader2 className="animate-spin mx-auto text-slate-300"/></td></tr>
             ) : mapel.length > 0 ? (
-              mapel.map((m) => (
-                <tr key={m.id} className="hover:bg-slate-50">
-                  <td className="p-6 font-bold text-slate-700 flex items-center gap-3">
-                    <BookOpen size={16} className="text-slate-400"/> {m.nama}
-                  </td>
-                  <td className="p-6 flex justify-center gap-2">
-                    <button onClick={() => setEditingMapel(m)} className="p-2 bg-blue-50 text-blue-600 rounded-lg"><Edit3 size={16}/></button>
-                    <button onClick={() => handleHapus(m.id)} className="p-2 bg-red-50 text-red-500 rounded-lg"><Trash2 size={16}/></button>
-                  </td>
+                mapel.map((m) => (
+                <tr key={m.id} className="hover:bg-slate-50 transition-colors">
+                    <td className="p-6 font-bold text-slate-700">
+                    <div className="flex items-center gap-3">
+                        <BookOpen size={16} className="text-slate-400 shrink-0"/> 
+                        <span className="truncate">{m.nama}</span>
+                    </div>
+                    </td>
+                    <td className="p-6">
+                    <div className="flex justify-center gap-2">
+                        <button 
+                        onClick={() => setEditingMapel(m)} 
+                        className="p-2 bg-blue-50 text-blue-600 rounded-lg hover:bg-blue-600 hover:text-white transition-all"
+                        title="Edit"
+                        >
+                        <Edit3 size={16}/>
+                        </button>
+                        <button 
+                        onClick={() => handleHapus(m.id)} 
+                        className="p-2 bg-red-50 text-red-500 rounded-lg hover:bg-red-500 hover:text-white transition-all"
+                        title="Hapus"
+                        >
+                        <Trash2 size={16}/>
+                        </button>
+                    </div>
+                    </td>
                 </tr>
-              ))
+                ))
             ) : (
-              <tr><td colSpan={2} className="p-10 text-center text-slate-400 text-sm">Belum ada mata pelajaran.</td></tr>
+                <tr><td colSpan={2} className="p-10 text-center text-slate-400 text-sm italic">Belum ada mata pelajaran.</td></tr>
             )}
-          </tbody>
+            </tbody>
         </table>
       </div>
     </div>

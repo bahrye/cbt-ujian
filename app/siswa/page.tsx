@@ -1,16 +1,16 @@
 'use client'
 import { useState, useEffect } from 'react';
-import { db, auth } from '@/lib/firebase';
+import { db, auth } from '@/lib/firebase'; //
 import { onAuthStateChanged, User as FirebaseUser } from 'firebase/auth';
 import { 
-  doc, getDoc, getDocs, setDoc, updateDoc, onSnapshot, 
+  doc, getDoc, getDocs, setDoc, 
   collection, query, orderBy, where 
 } from 'firebase/firestore';
 import { useRouter } from 'next/navigation';
 import { 
   LayoutDashboard, FileText, BarChart3, LogOut, Menu, 
-  X, ShieldCheck, ChevronRight, Loader2, ClipboardCheck, 
-  Clock, BookOpen, School, AlertCircle
+  ShieldCheck, ChevronRight, Loader2, ClipboardCheck, 
+  Clock, BookOpen, School, AlertCircle, Calendar, User, Timer
 } from 'lucide-react';
 
 export default function HalamanSiswa() {
@@ -20,13 +20,15 @@ export default function HalamanSiswa() {
   const [isMobileOpen, setIsMobileOpen] = useState(false);
   const [authorized, setAuthorized] = useState(false);
   const [userData, setUserData] = useState<any>(null);
+  const [currentTime, setCurrentTime] = useState(new Date());
   const router = useRouter();
 
-  // State Jadwal Ujian
+  // State Data Ujian & Master
   const [daftarUjian, setDaftarUjian] = useState<any[]>([]);
+  const [allUsers, setAllUsers] = useState<any[]>([]);
   const [loadingUjian, setLoadingUjian] = useState(true);
 
-  // State Pelaksanaan Ujian
+  // State Pelaksanaan Ujian (Lembar Soal)
   const [isVerified, setIsVerified] = useState(false);
   const [selectedUjian, setSelectedUjian] = useState<any>(null);
   const [daftarSoal, setDaftarSoal] = useState<any[]>([]);
@@ -40,7 +42,13 @@ export default function HalamanSiswa() {
     { name: 'Hasil Ujian', icon: <BarChart3 size={20}/> },
   ];
 
-  // --- 1. AUTHENTICATION & PROFILE CHECK ---
+  // --- 1. REAL-TIME CLOCK FOR VALIDATION ---
+  useEffect(() => {
+    const timer = setInterval(() => setCurrentTime(new Date()), 10000); // Update tiap 10 detik
+    return () => clearInterval(timer);
+  }, []);
+
+  // --- 2. AUTHENTICATION & PROFILE CHECK ---
   useEffect(() => {
     const unsubscribe = onAuthStateChanged(auth, async (user: FirebaseUser | null) => {
       if (user) {
@@ -62,13 +70,17 @@ export default function HalamanSiswa() {
     return () => unsubscribe();
   }, [router]);
 
-  // --- 2. FETCH JADWAL UJIAN (SINKRON DENGAN KELOLA-UJIAN.TSX) ---
+  // --- 3. FETCH DATA (UJIAN & USERS FOR MAPPING) ---
   useEffect(() => {
     if (authorized && userData?.kelas) {
-      const fetchJadwal = async () => {
+      const fetchData = async () => {
         setLoadingUjian(true);
         try {
-          // Ambil semua ujian yang statusnya 'aktif'
+          // Ambil data users untuk mapping nama pengawas
+          const usersSnap = await getDocs(collection(db, "users"));
+          setAllUsers(usersSnap.docs.map(d => ({ id: d.id, ...d.data() })));
+
+          // Ambil semua ujian aktif (Memerlukan Index Firestore)
           const q = query(
             collection(db, "ujian"), 
             where("status", "==", "aktif"),
@@ -77,54 +89,51 @@ export default function HalamanSiswa() {
           const snap = await getDocs(q);
           const allUjian = snap.docs.map(d => ({ id: d.id, ...d.data() } as any));
           
-          // Filter Berdasarkan Target Kelas (Mendukung format String atau Array)
+          // Filter Berdasarkan Kelas (Mendukung String atau Array)
+          const kelasSiswa = userData.kelas.toString().trim().toUpperCase();
           const filtered = allUjian.filter((ujian: any) => {
-            if (!userData?.kelas) return false;
-            
-            const kelasSiswa = userData.kelas.toString().trim().toUpperCase();
-
-            // Jika field kelas di Firestore adalah STRING
+            if (!ujian.kelas) return false;
+            // Jika format string di database
             if (typeof ujian.kelas === 'string') {
-              return ujian.kelas.trim().toUpperCase() === kelasSiswa;
+                return ujian.kelas.trim().toUpperCase() === kelasSiswa;
             }
-
-            // Jika field kelas di Firestore adalah ARRAY
-            if (Array.isArray(ujian.kelas)) {
-              return ujian.kelas.some((k: string) => k.trim().toUpperCase() === kelasSiswa);
-            }
-
-            return false;
+            // Jika format array di database
+            return Array.isArray(ujian.kelas) && 
+                   ujian.kelas.some((k: string) => k.trim().toUpperCase() === kelasSiswa);
           });
 
           setDaftarUjian(filtered);
         } catch (error) {
-          console.error("Gagal mengambil jadwal:", error);
+          console.error("Gagal mengambil data:", error);
         } finally {
           setLoadingUjian(false);
         }
       };
-      fetchJadwal();
+      fetchData();
     }
   }, [authorized, userData]);
 
-  // --- 3. SISTEM VERIFIKASI TOKEN & AMBIL SOAL ---
+  // --- 4. LOGIKA MULAI UJIAN ---
   const handleStartUjian = async (ujian: any) => {
+    const mulai = new Date(ujian.tglMulai);
+    const selesai = new Date(ujian.tglSelesai);
+    
+    if (currentTime < mulai) return alert("Ujian belum dimulai!");
+    if (currentTime > selesai) return alert("Waktu ujian telah berakhir!");
+
     const inputToken = prompt(`Masukkan Token untuk ujian: ${ujian.namaUjian}`);
     
-    // Perbandingan Token (Case Insensitive)
     if (inputToken?.trim().toUpperCase() === ujian.token?.trim().toUpperCase()) {
       const user = auth.currentUser;
       if (user) {
         setLoadingUjian(true);
         try {
-          // 1. Ambil data soal berdasarkan array 'soalTerpilih' dari Admin
           const soalIds = ujian.soalTerpilih || [];
           if (soalIds.length === 0) {
             alert("Ujian ini belum memiliki butir soal. Hubungi Admin.");
             return;
           }
 
-          // Ambil konten soal satu per satu dari bank_soal
           const fetchedSoal = await Promise.all(
             soalIds.map(async (id: string) => {
               const sDoc = await getDoc(doc(db, "bank_soal", id));
@@ -132,12 +141,9 @@ export default function HalamanSiswa() {
             })
           );
 
-          // 2. Daftarkan kehadiran ke monitoring
           await setDoc(doc(db, "ujian_berjalan", user.uid), {
             nama: userData.nama,
             kelas: userData.kelas,
-            email: user.email,
-            violations: 0,
             status: 'Mengerjakan',
             mulaiAt: new Date(),
             ujianId: ujian.id,
@@ -159,14 +165,14 @@ export default function HalamanSiswa() {
     }
   };
 
-  // --- UI RENDER (LOGIC ONLY) ---
+  // --- UI RENDER LOGIC ---
   if (!authorized) return (
     <div className="min-h-screen flex items-center justify-center bg-white">
       <Loader2 className="w-10 h-10 animate-spin text-blue-600" />
     </div>
   );
 
-  // Jika sedang mengerjakan ujian (Tampilan Lembar Soal)
+  // VIEW: LEMBAR SOAL (SAAT UJIAN BERJALAN)
   if (isVerified) {
     return (
       <div className="min-h-screen bg-slate-50 pb-20 font-sans">
@@ -188,7 +194,6 @@ export default function HalamanSiswa() {
                 <div className="text-lg font-bold text-slate-800 pt-1 prose-sm" dangerouslySetInnerHTML={{ __html: s.pertanyaan }} />
               </div>
               <div className="grid grid-cols-1 gap-3">
-                {/* Asumsi opsi disimpan dalam array opsi di bank_soal */}
                 {s.opsi?.map((o: string, idx: number) => (
                   <label key={idx} className={`flex items-center p-5 border-2 rounded-2xl cursor-pointer transition-all ${jawabanSiswa[s.id] === o ? 'border-blue-600 bg-blue-50 shadow-md' : 'border-slate-50 hover:border-slate-200 bg-white'}`}>
                     <input type="radio" className="w-5 h-5 mr-4 accent-blue-600" onChange={() => setJawabanSiswa({...jawabanSiswa, [s.id]: o})} checked={jawabanSiswa[s.id] === o} />
@@ -204,7 +209,7 @@ export default function HalamanSiswa() {
     );
   }
 
-  // Tampilan Utama (Dashboard & Sidebar)
+  // VIEW: DASHBOARD UTAMA
   return (
     <div className="min-h-screen bg-slate-50 flex font-sans overflow-x-hidden">
       {isMobileOpen && <div className="fixed inset-0 bg-slate-900/40 backdrop-blur-sm z-30 lg:hidden" onClick={() => setIsMobileOpen(false)}/>}
@@ -277,25 +282,69 @@ export default function HalamanSiswa() {
                     <p className="text-xs text-slate-400 italic">Jadwal ujian kelas {userData?.kelas} belum tersedia.</p>
                   </div>
                 ) : (
-                  daftarUjian.map((u) => (
-                    <div key={u.id} className="bg-white p-8 rounded-[3rem] border shadow-sm hover:shadow-xl transition-all group border-l-[12px] border-l-blue-600">
-                      <div className="flex justify-between items-start mb-6">
-                        <div className="p-4 bg-blue-50 text-blue-600 rounded-2xl group-hover:scale-110 transition-transform"><BookOpen size={28}/></div>
-                        <div className="text-right">
-                          <span className="text-[10px] font-black text-slate-400 uppercase tracking-widest">Pelajaran</span>
-                          <p className="text-xs font-bold text-blue-600 uppercase">{u.mapel}</p>
+                  daftarUjian.map((u) => {
+                    const mulai = new Date(u.tglMulai);
+                    const selesai = new Date(u.tglSelesai);
+                    const isBelumMulai = currentTime < mulai;
+                    const isSudahSelesai = currentTime > selesai;
+                    const isAktif = !isBelumMulai && !isSudahSelesai;
+
+                    const namaPengawas = u.pengawasIds?.map((id: string) => {
+                        const p = allUsers.find(user => user.id === id);
+                        return p ? p.nama : "Anonim";
+                    }).join(", ") || "Belum ditentukan";
+
+                    return (
+                        <div key={u.id} className={`bg-white p-8 rounded-[3rem] border shadow-sm hover:shadow-xl transition-all group border-l-[12px] ${isAktif ? 'border-l-blue-600' : 'border-l-slate-300 opacity-80'}`}>
+                          <div className="flex justify-between items-start mb-6">
+                            <div className={`p-4 rounded-2xl transition-transform group-hover:scale-110 ${isAktif ? 'bg-blue-50 text-blue-600' : 'bg-slate-100 text-slate-400'}`}>
+                              <BookOpen size={28}/>
+                            </div>
+                            <div className="text-right">
+                              <span className="text-[10px] font-black text-slate-400 uppercase tracking-widest">Pelajaran</span>
+                              <p className="text-xs font-bold text-blue-600 uppercase">{u.mapel}</p>
+                            </div>
+                          </div>
+                          
+                          <h4 className="text-xl font-black text-slate-800 tracking-tighter mb-4 uppercase">{u.namaUjian}</h4>
+                          
+                          <div className="space-y-3 mb-8">
+                            <div className="flex items-center gap-3 text-slate-500 text-xs font-bold">
+                                <Calendar size={16} className="text-blue-500"/> 
+                                <span>{mulai.toLocaleString('id-ID', { dateStyle: 'medium', timeStyle: 'short' })}</span>
+                                <span className="text-slate-300">s/d</span>
+                                <span>{selesai.toLocaleString('id-ID', { timeStyle: 'short' })}</span>
+                            </div>
+                            
+                            <div className="flex items-center gap-3 text-slate-500 text-xs font-bold">
+                                <User size={16} className="text-purple-500"/>
+                                <span className="truncate">Pengawas: {namaPengawas}</span>
+                            </div>
+
+                            <div className="flex items-center gap-3 text-slate-500 text-xs font-bold">
+                                <Clock size={16} className="text-orange-500"/> Durasi: {u.durasi} Menit
+                            </div>
+                            <div className="flex items-center gap-3 text-slate-500 text-xs font-bold">
+                                <FileText size={16} className="text-green-500"/> {u.soalTerpilih?.length || 0} Butir Soal
+                            </div>
+                          </div>
+
+                          {isBelumMulai ? (
+                            <div className="w-full bg-slate-100 text-slate-400 py-5 rounded-2xl font-black text-[10px] uppercase tracking-widest flex items-center justify-center gap-2 border border-dashed border-slate-300">
+                                <Timer size={18}/> Belum Dimulai
+                            </div>
+                          ) : isSudahSelesai ? (
+                            <div className="w-full bg-red-50 text-red-400 py-5 rounded-2xl font-black text-[10px] uppercase tracking-widest flex items-center justify-center gap-2 border border-red-100">
+                                Ujian Selesai
+                            </div>
+                          ) : (
+                            <button onClick={() => handleStartUjian(u)} className="w-full bg-slate-900 text-white py-5 rounded-2xl font-black text-[10px] uppercase tracking-widest hover:bg-blue-600 transition-all flex items-center justify-center gap-2 shadow-lg shadow-slate-100 group-hover:shadow-blue-200">
+                                Mulai Kerjakan <ChevronRight size={18}/>
+                            </button>
+                          )}
                         </div>
-                      </div>
-                      <h4 className="text-xl font-black text-slate-800 tracking-tighter mb-4 uppercase">{u.namaUjian}</h4>
-                      <div className="space-y-3 mb-8">
-                        <div className="flex items-center gap-3 text-slate-500 text-xs font-bold"><Clock size={16} className="text-blue-500"/> Durasi: {u.durasi} Menit</div>
-                        <div className="flex items-center gap-3 text-slate-500 text-xs font-bold"><FileText size={16} className="text-blue-500"/> {u.soalTerpilih?.length || 0} Butir Soal</div>
-                      </div>
-                      <button onClick={() => handleStartUjian(u)} className="w-full bg-slate-900 text-white py-5 rounded-2xl font-black text-[10px] uppercase tracking-widest hover:bg-blue-600 transition-all flex items-center justify-center gap-2 shadow-lg shadow-slate-100 group-hover:shadow-blue-200">
-                        Mulai Kerjakan <ChevronRight size={18}/>
-                      </button>
-                    </div>
-                  ))
+                    );
+                  })
                 )}
               </div>
             </div>

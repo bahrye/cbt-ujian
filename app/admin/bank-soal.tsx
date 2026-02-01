@@ -22,13 +22,10 @@ export default function BankSoalSection() {
   const [loading, setLoading] = useState(false);
   const [soalList, setSoalList] = useState<any[]>([]);
   const [mapelList, setMapelList] = useState<{id: string, nama: string}[]>([]);
-  
   const [filterMapel, setFilterMapel] = useState('all');
   const [searchQuery, setSearchQuery] = useState('');
-
   const [isEditMode, setIsEditMode] = useState(false);
   const [currentId, setCurrentId] = useState('');
-  
   const [namaBankSoal, setNamaBankSoal] = useState('');
   const [tipeSoal, setTipeSoal] = useState('pilihan_ganda');
   const [pertanyaan, setPertanyaan] = useState('');
@@ -54,7 +51,6 @@ export default function BankSoalSection() {
     getDocs(query(collection(db, "mapel"), orderBy("nama", "asc"))).then(snap => {
       setMapelList(snap.docs.map(d => ({ id: d.id, nama: d.data().nama })));
     });
-
     const unsubscribe = onSnapshot(
       query(collection(db, "bank_soal"), orderBy("createdAt", "desc")), 
       (snapshot) => {
@@ -81,38 +77,22 @@ export default function BankSoalSection() {
   const simpanSoal = async () => {
     let finalKunci = jawabanBenar;
     if (tipeSoal === 'pencocokan') finalKunci = JSON.stringify(pairs);
-
-    if (!pertanyaan || !selectedMapel || !namaBankSoal) {
-      return alert("Mohon lengkapi Nama Bank, Pertanyaan, dan Mapel!");
-    }
-
+    if (!pertanyaan || !selectedMapel || !namaBankSoal) return alert("Lengkapi data!");
     setLoading(true);
     const payload = {
-      namaBankSoal,
-      pertanyaan,
-      mapel: selectedMapel,
-      tipe: tipeSoal,
-      bobot: Number(bobot),
-      opsi: tipeSoal === 'pilihan_ganda' ? opsi : null,
-      jawabanBenar: finalKunci,
-      media,
-      updatedAt: new Date()
+      namaBankSoal, pertanyaan, mapel: selectedMapel, tipe: tipeSoal,
+      bobot: Number(bobot), opsi: tipeSoal === 'pilihan_ganda' ? opsi : null,
+      jawabanBenar: finalKunci, media, updatedAt: new Date()
     };
-
     try {
       if (isEditMode) {
         await updateDoc(doc(db, "bank_soal", currentId), payload);
-        alert("Soal berhasil diperbarui!");
       } else {
         await addDoc(collection(db, "bank_soal"), { ...payload, createdAt: new Date() });
-        alert("Soal baru berhasil disimpan!");
       }
       resetForm();
-    } catch (error) {
-      alert("Gagal memproses data");
-    } finally {
-      setLoading(false);
-    }
+      alert("Berhasil!");
+    } catch (error) { alert("Gagal!"); } finally { setLoading(false); }
   };
 
   const handleEdit = (soal: any) => {
@@ -157,16 +137,9 @@ export default function BankSoalSection() {
               {isEditMode ? <Edit3 size={18} className="text-orange-500"/> : <Plus size={18} className="text-blue-600"/>}
               {isEditMode ? 'Edit Soal' : 'Buat Soal'}
             </h3>
-            {isEditMode && <button onClick={resetForm} className="text-[10px] font-bold text-red-500 uppercase">Batal Edit</button>}
+            {isEditMode && <button onClick={resetForm} className="text-[10px] font-bold text-red-500 uppercase">Batal</button>}
           </div>
-
-          <input 
-            placeholder="Nama Kelompok Bank Soal"
-            className="w-full p-4 bg-slate-50 border-none rounded-2xl text-xs font-bold outline-none ring-2 ring-transparent focus:ring-blue-100"
-            value={namaBankSoal}
-            onChange={(e) => setNamaBankSoal(e.target.value)}
-          />
-
+          <input placeholder="Nama Kelompok Bank Soal" className="w-full p-4 bg-slate-50 border-none rounded-2xl text-xs font-bold outline-none ring-2 ring-transparent focus:ring-blue-100" value={namaBankSoal} onChange={(e) => setNamaBankSoal(e.target.value)} />
           <div className="grid grid-cols-2 gap-3">
             <select className="p-4 bg-slate-50 border-none rounded-2xl text-xs font-bold outline-none" value={selectedMapel} onChange={(e) => setSelectedMapel(e.target.value)}>
               <option value="">Mapel</option>
@@ -180,17 +153,9 @@ export default function BankSoalSection() {
               <option value="pencocokan">Pencocokan</option>
             </select>
           </div>
-
           <div className="bg-slate-50 rounded-2xl overflow-hidden border-none quill-container">
-            <ReactQuill 
-              theme="snow" 
-              value={pertanyaan} 
-              onChange={setPertanyaan} 
-              modules={modules}
-              placeholder="Tulis pertanyaan lengkap di sini..."
-            />
+            <ReactQuill theme="snow" value={pertanyaan} onChange={setPertanyaan} modules={modules} placeholder="Tulis pertanyaan..." />
           </div>
-
           <div className="flex gap-2">
             <label className="flex-1 cursor-pointer p-3 bg-slate-50 rounded-xl flex items-center justify-center gap-2 text-slate-500 hover:bg-blue-50">
               <ImageIcon size={16}/> <span className="text-[10px] font-bold uppercase">Gambar</span>
@@ -201,44 +166,36 @@ export default function BankSoalSection() {
               <input type="file" hidden accept="audio/*" onChange={(e) => handleUpload(e, 'audio')} />
             </label>
           </div>
-
           {media && (
             <div className="p-2 bg-blue-50 rounded-xl flex items-center justify-between border border-blue-100">
               <span className="text-[9px] font-black text-blue-600 uppercase ml-2">✓ {media.type} Terunggah</span>
               <button onClick={() => setMedia(null)} className="p-1 text-red-500"><X size={14}/></button>
             </div>
           )}
-
           <div className="space-y-3 pt-2">
             {tipeSoal === 'pencocokan' && (
               <div className="space-y-2">
                 {pairs.map((p, idx) => (
                   <div key={p.id} className="flex gap-2 items-center">
-                    <input placeholder="Kiri" className="flex-1 p-2 bg-slate-50 border rounded-lg text-xs" value={p.key} onChange={(e) => {
-                      const n = [...pairs]; n[idx].key = e.target.value; setPairs(n);
-                    }} />
-                    <input placeholder="Kanan" className="flex-1 p-2 bg-slate-50 border rounded-lg text-xs" value={p.value} onChange={(e) => {
-                      const n = [...pairs]; n[idx].value = e.target.value; setPairs(n);
-                    }} />
+                    <input placeholder="Kiri" className="flex-1 p-2 bg-slate-50 border rounded-lg text-xs" value={p.key} onChange={(e) => { const n = [...pairs]; n[idx].key = e.target.value; setPairs(n); }} />
+                    <input placeholder="Kanan" className="flex-1 p-2 bg-slate-50 border rounded-lg text-xs" value={p.value} onChange={(e) => { const n = [...pairs]; n[idx].value = e.target.value; setPairs(n); }} />
                     <button onClick={() => setPairs(pairs.filter(i => i.id !== p.id))} className="text-red-400"><Trash2 size={14}/></button>
                   </div>
                 ))}
-                <button onClick={() => setPairs([...pairs, {id: Date.now(), key: '', value: ''}])} className="w-full py-2 border-2 border-dashed rounded-xl text-[9px] font-bold text-slate-400">+ BARIS</button>
+                <button onClick={() => setPairs([...pairs, {id: Date.now(), key: '', value: ''}])} className="w-full py-2 border-2 border-dashed rounded-xl text-[9px] font-bold text-slate-400 uppercase">+ BARIS</button>
               </div>
             )}
-
             {tipeSoal === 'pilihan_ganda' && (
               <div className="space-y-2">
                 {['a', 'b', 'c', 'd', 'e'].map(l => (
                   <input key={l} placeholder={`Opsi ${l.toUpperCase()}`} className="w-full p-3 bg-slate-50 border rounded-xl text-xs" value={(opsi as any)[l]} onChange={(e) => setOpsi({...opsi, [l]: e.target.value})} />
                 ))}
                 <select className="w-full p-4 bg-green-50 text-green-700 rounded-2xl text-xs font-black uppercase outline-none" value={jawabanBenar} onChange={(e) => setJawabanBenar(e.target.value)}>
-                  <option value="">Pilih Kunci Jawaban</option>
-                  {['a','b','c','d','e'].map(l => (opsi as any)[l] && <option key={l} value={l}>Jawaban: {l.toUpperCase()}</option>)}
+                  <option value="">Kunci Jawaban</option>
+                  {['a','b','c','d','e'].map(l => (opsi as any)[l] && <option key={l} value={l}>{l.toUpperCase()}</option>)}
                 </select>
               </div>
             )}
-
             {tipeSoal === 'benar_salah' && (
               <div className="flex gap-2">
                 {['benar', 'salah'].map(v => (
@@ -246,16 +203,14 @@ export default function BankSoalSection() {
                 ))}
               </div>
             )}
-
             {(tipeSoal === 'isian' || tipeSoal === 'uraian') && (
-              <input placeholder="Kunci Jawaban" className="w-full p-4 bg-green-50 text-green-700 rounded-2xl text-xs font-bold border-none" value={jawabanBenar} onChange={(e) => setJawabanBenar(e.target.value)} />
+              <input placeholder="Kunci Jawaban" className="w-full p-4 bg-green-50 text-green-700 rounded-2xl text-xs font-bold border-none outline-none" value={jawabanBenar} onChange={(e) => setJawabanBenar(e.target.value)} />
             )}
           </div>
-
           <div className="flex gap-4 items-end border-t pt-4">
             <div className="w-24">
               <label className="text-[10px] font-black text-slate-400 uppercase">Bobot</label>
-              <input type="number" className="w-full p-3 bg-slate-50 rounded-xl font-bold text-sm border-none" value={bobot} onChange={(e) => setBobot(Number(e.target.value))} />
+              <input type="number" className="w-full p-3 bg-slate-50 rounded-xl font-bold text-sm border-none outline-none" value={bobot} onChange={(e) => setBobot(Number(e.target.value))} />
             </div>
             <button onClick={simpanSoal} disabled={loading || uploading} className={`flex-1 py-4 rounded-2xl font-black text-[10px] uppercase tracking-widest text-white transition-all ${isEditMode ? 'bg-orange-500' : 'bg-slate-900'}`}>
               {loading ? <Loader2 className="animate-spin mx-auto"/> : isEditMode ? "Perbarui" : "Simpan"}
@@ -263,19 +218,17 @@ export default function BankSoalSection() {
           </div>
         </div>
       </div>
-
       <div className="lg:col-span-7 space-y-4">
         <div className="bg-white p-4 rounded-3xl border shadow-sm flex flex-col md:flex-row gap-3">
           <div className="relative flex-1">
             <Search size={16} className="absolute left-4 top-1/2 -translate-y-1/2 text-slate-400" />
-            <input placeholder="Cari soal atau nama bank..." className="w-full pl-10 pr-4 py-3 bg-slate-50 rounded-2xl text-xs font-bold outline-none" value={searchQuery} onChange={(e) => setSearchQuery(e.target.value)} />
+            <input placeholder="Cari soal..." className="w-full pl-10 pr-4 py-3 bg-slate-50 rounded-2xl text-xs font-bold outline-none" value={searchQuery} onChange={(e) => setSearchQuery(e.target.value)} />
           </div>
           <select className="bg-slate-50 px-4 py-3 rounded-2xl text-xs font-bold outline-none" value={filterMapel} onChange={(e) => setFilterMapel(e.target.value)}>
             <option value="all">Semua Mapel</option>
             {mapelList.map(m => <option key={m.id} value={m.nama}>{m.nama}</option>)}
           </select>
         </div>
-
         <div className="space-y-4">
           {filteredSoal.map((s) => (
             <div key={s.id} className="bg-white p-6 rounded-[2.2rem] border shadow-sm hover:border-blue-200 transition-all">

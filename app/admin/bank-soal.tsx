@@ -13,30 +13,19 @@ import {
 import dynamic from 'next/dynamic';
 
 // Import modul secara dinamis dan daftarkan ImageResize ke Quill
-// @ts-ignore
 const ReactQuill = dynamic(async () => {
-  // 1. Impor library utama
   const { default: RQ } = await import('react-quill-new');
-  const { Quill } = RQ;
+  const Quill = (await import('quill')).default; // Impor Quill secara eksplisit
 
-  // 2. DAFTARKAN KE WINDOW SECARA PAKSA
-  // Ini harus dilakukan sebelum mengimpor plugin imageResize
   if (typeof window !== 'undefined') {
     (window as any).Quill = Quill;
   }
 
-  // 3. Impor plugin setelah Quill dipastikan ada di window
-  // @ts-ignore
   const ImageResize = (await import('quill-image-resize-module-react')).default;
-  
-  // 4. Daftarkan modul
   Quill.register('modules/imageResize', ImageResize);
   
   return RQ;
-}, { 
-  ssr: false,
-  loading: () => <div className="h-80 bg-slate-50 animate-pulse rounded-2xl border-2 border-slate-200" />
-});
+}, { ssr: false });
 
 import 'react-quill-new/dist/quill.snow.css';
 
@@ -78,8 +67,19 @@ export default function BankSoalSection() {
       ['clean']
     ],
     imageResize: {
-      parchment: null, // Gunakan null jika menggunakan Quill versi terbaru
-      modules: ['Resize', 'DisplaySize', 'Toolbar'] // Toolbar sangat penting untuk posisi
+      // Hapus atau komentari parchment: null
+      modules: ['Resize', 'DisplaySize', 'Toolbar'],
+      handleStyles: {
+        backgroundColor: 'black',
+        border: 'none',
+        color: 'white'
+      },
+      // Tambahkan pengaturan toolbar agar muncul
+      toolbarStyles: {
+        backgroundColor: '#1e293b',
+        border: 'none',
+        color: 'white'
+      }
     }
   };
 
@@ -260,20 +260,16 @@ export default function BankSoalSection() {
               .ql-editor { min-height: 300px; font-size: 16px; }
               
               /* Memastikan Toolbar Resize Gambar Terlihat Jelas */
+              /* Pastikan toolbar alignment berada di lapisan paling atas */
               .ql-image-resizer-toolbar {
-                background-color: #1e293b !important; /* Warna gelap agar kontras */
-                border-radius: 8px !important;
+                z-index: 9999 !important;
                 display: flex !important;
-                padding: 4px !important;
-                z-index: 9999 !important; /* Pastikan di atas gambar */
+                background-color: #333 !important;
+                border-radius: 4px !important;
               }
 
               .ql-image-resizer-toolbar span {
                 color: white !important;
-                padding: 2px 8px !important;
-                border: 1px solid #475569 !important;
-                margin: 0 2px !important;
-                cursor: pointer !important;
               }
 
               .ql-image-resizer-toolbar span:hover {

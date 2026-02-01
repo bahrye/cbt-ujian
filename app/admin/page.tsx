@@ -651,79 +651,138 @@ function UserManagementSection({ daftarKelas }: { daftarKelas: string[] }) {
   );
 }
 
-function ClassManagementSection({ daftarKelas, refreshKelas }: { daftarKelas: string[], refreshKelas: () => void }) {
+function ClassManagementSection({ 
+  daftarKelas, 
+  refreshKelas 
+}: { 
+  daftarKelas: string[], 
+  refreshKelas: () => void 
+}) {
   const [newClassName, setNewClassName] = useState('');
   const [loading, setLoading] = useState(false);
 
+  // Fungsi Tambah Kelas
   const handleAddClass = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (!newClassName) return;
+    if (!newClassName.trim()) return;
+
     setLoading(true);
     try {
-      // Simpan kelas ke koleksi "classes"
-      const classID = newClassName.toUpperCase().trim();
-      await setDoc(doc(db, "classes", classID), { createdAt: new Date() });
+      const classID = newClassName.toUpperCase().trim().replace(/\s+/g, '-');
+      
+      // Simpan ke Firestore menggunakan ID dokumen sebagai nama kelas
+      await setDoc(doc(db, "classes", classID), {
+        nama_kelas: classID,
+        createdAt: new Date().toISOString()
+      });
+
       setNewClassName('');
-      refreshKelas();
-      alert("Kelas berhasil ditambahkan!");
+      refreshKelas(); // Panggil fungsi refresh dari parent
+      alert(`Kelas ${classID} berhasil ditambahkan!`);
     } catch (error) {
-      alert("Gagal menambah kelas");
+      console.error(error);
+      alert("Gagal menambahkan kelas. Silakan coba lagi.");
     } finally {
       setLoading(false);
     }
   };
 
+  // Fungsi Hapus Kelas
   const handleDeleteClass = async (id: string) => {
-    if (confirm(`Hapus kelas ${id}? Siswa di kelas ini tidak akan terhapus, namun filter akan hilang.`)) {
-      await deleteDoc(doc(db, "classes", id));
-      refreshKelas();
+    if (confirm(`Hapus kelas ${id}? \n\nCatatan: Siswa yang terdaftar di kelas ini tetap ada, namun filter kelas mereka akan menjadi kosong.`)) {
+      try {
+        await deleteDoc(doc(db, "classes", id));
+        refreshKelas();
+      } catch (error) {
+        alert("Gagal menghapus kelas.");
+      }
     }
   };
 
   return (
-    <div className="max-w-4xl mx-auto space-y-6 animate-in fade-in duration-500">
-      <div className="bg-white p-8 rounded-[3rem] border shadow-sm space-y-6">
-        <div className="flex items-center gap-3 border-b pb-4">
-          <div className="p-3 bg-blue-600 rounded-2xl text-white shadow-lg shadow-blue-100">
-            <School size={24}/>
-          </div>
-          <div>
-            <h3 className="text-xl font-black text-slate-800 uppercase tracking-tighter">Kelola Data Kelas</h3>
-            <p className="text-[10px] text-slate-400 font-bold uppercase tracking-widest">Manajemen Grup Siswa</p>
+    <div className="max-w-4xl mx-auto space-y-6 animate-in fade-in slide-in-from-bottom-4 duration-500">
+      {/* Kartu Input Kelas */}
+      <div className="bg-white p-6 md:p-10 rounded-[2.5rem] md:rounded-[3.5rem] border shadow-sm space-y-8">
+        <div className="flex flex-col md:flex-row md:items-center justify-between gap-4 border-b pb-6">
+          <div className="flex items-center gap-4">
+            <div className="p-4 bg-blue-600 rounded-3xl text-white shadow-xl shadow-blue-100">
+              <School size={28}/>
+            </div>
+            <div>
+              <h3 className="text-xl md:text-2xl font-black text-slate-800 uppercase tracking-tighter">Kelola Data Kelas</h3>
+              <p className="text-[10px] text-slate-400 font-bold uppercase tracking-widest mt-1 text-white">Database Grup Siswa & Rombel</p>
+            </div>
           </div>
         </div>
 
-        <form onSubmit={handleAddClass} className="flex gap-2">
+        {/* Form Tambah */}
+        <form onSubmit={handleAddClass} className="relative group">
           <input 
-            placeholder="Contoh: XII-IPA-1" 
-            className="flex-1 p-4 bg-slate-50 border border-slate-100 rounded-2xl outline-none focus:border-blue-500 font-bold text-slate-700"
+            type="text"
+            placeholder="Ketik Nama Kelas (Contoh: XII-IPA-1)" 
+            className="w-full p-5 md:p-6 bg-slate-50 border border-slate-100 rounded-[2rem] outline-none focus:border-blue-500 focus:bg-white font-bold text-slate-700 transition-all pr-32 md:pr-40 shadow-inner"
             value={newClassName}
             onChange={(e) => setNewClassName(e.target.value)}
           />
           <button 
-            disabled={loading}
-            className="bg-blue-600 text-white px-8 rounded-2xl font-black text-xs uppercase tracking-widest hover:bg-blue-700 transition-all shadow-lg shadow-blue-100"
+            type="submit"
+            disabled={loading || !newClassName}
+            className="absolute right-2 top-2 bottom-2 bg-blue-600 text-white px-6 md:px-10 rounded-2xl font-black text-[10px] md:text-xs uppercase tracking-widest hover:bg-blue-700 transition-all shadow-lg shadow-blue-200 active:scale-95 disabled:opacity-50 disabled:grayscale"
           >
-            {loading ? <Loader2 className="animate-spin"/> : "Tambah"}
+            {loading ? <Loader2 className="animate-spin mx-auto"/> : "Tambah Kelas"}
           </button>
         </form>
 
-        <div className="grid grid-cols-2 md:grid-cols-3 gap-3">
-          {daftarKelas.length === 0 ? (
-            <p className="col-span-full text-center py-10 text-slate-400 italic font-medium">Belum ada data kelas.</p>
-          ) : (
-            daftarKelas.map((kelas) => (
-              <div key={kelas} className="flex justify-between items-center p-4 bg-slate-50 rounded-2xl border border-slate-100 group hover:bg-white hover:shadow-md transition-all">
-                <span className="font-black text-slate-700">{kelas}</span>
-                <button 
-                  onClick={() => handleDeleteClass(kelas)}
-                  className="text-slate-300 hover:text-red-500 transition-colors"
-                >
-                  <Trash2 size={18}/>
-                </button>
+        {/* Daftar Kelas Grid */}
+        <div className="space-y-4">
+          <div className="flex items-center justify-between px-2">
+            <p className="text-[10px] font-black text-slate-400 uppercase tracking-widest">Daftar Kelas Aktif</p>
+            <span className="text-[10px] font-bold bg-slate-100 text-slate-500 px-3 py-1 rounded-full uppercase">Total: {daftarKelas.length}</span>
+          </div>
+          
+          <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 gap-4">
+            {daftarKelas.length === 0 ? (
+              <div className="col-span-full py-16 text-center bg-slate-50 rounded-[2rem] border border-dashed border-slate-200">
+                <div className="w-16 h-16 bg-white rounded-full flex items-center justify-center mx-auto mb-4 shadow-sm">
+                  <School className="text-slate-200" size={32}/>
+                </div>
+                <p className="text-slate-400 italic font-medium text-sm">Belum ada data kelas yang terdaftar.</p>
               </div>
-            ))
-          )}
+            ) : (
+              daftarKelas.map((kelas) => (
+                <div 
+                  key={kelas} 
+                  className="flex justify-between items-center p-5 bg-white rounded-[1.5rem] border border-slate-100 shadow-sm hover:shadow-md hover:border-blue-100 transition-all group"
+                >
+                  <div className="flex items-center gap-3">
+                    <div className="w-2 h-2 rounded-full bg-blue-500"></div>
+                    <span className="font-black text-slate-700 tracking-tight">{kelas}</span>
+                  </div>
+                  <button 
+                    onClick={() => handleDeleteClass(kelas)}
+                    className="p-2 text-slate-300 hover:text-red-500 hover:bg-red-50 rounded-xl transition-all"
+                    title="Hapus Kelas"
+                  >
+                    <Trash2 size={18}/>
+                  </button>
+                </div>
+              ))
+            )}
+          </div>
+        </div>
+      </div>
+
+      {/* Info Card */}
+      <div className="bg-orange-50 border border-orange-100 p-6 rounded-[2rem] flex gap-4 items-start">
+        <div className="p-2 bg-orange-100 text-orange-600 rounded-lg shrink-0">
+          <Database size={20}/>
+        </div>
+        <div>
+          <h4 className="text-sm font-black text-orange-800 uppercase tracking-tight">Tips Pengelolaan</h4>
+          <p className="text-xs text-orange-700/70 mt-1 leading-relaxed font-medium">
+            Nama kelas yang Anda tambahkan di sini akan otomatis muncul sebagai pilihan di menu <b>Kelola User</b>. 
+            Gunakan format yang konsisten (misal: XI-IPA-1) agar data laporan ujian lebih rapi.
+          </p>
         </div>
       </div>
     </div>

@@ -46,6 +46,8 @@ export default function KelolaUjianSection() {
   const [availableSoal, setAvailableSoal] = useState<any[]>([]);
   const [tempSelectedSoal, setTempSelectedSoal] = useState<string[]>([]);
 
+  const [filteredMapelList, setFilteredMapelList] = useState<string[]>([]);
+
   // Form State
   const [formData, setFormData] = useState<UjianData>({
     namaUjian: '',
@@ -88,6 +90,30 @@ export default function KelolaUjianSection() {
       console.error(e);
     } finally {
       setLoading(false);
+    }
+  };
+
+  const updateFilteredMapel = async (kelompokNama: string) => {
+    if (!kelompokNama) {
+        setFilteredMapelList([]);
+        return;
+    }
+
+    try {
+        // Ambil soal yang memiliki nama kelompok tersebut
+        const q = query(
+        collection(db, "bank_soal"),
+        where("namaBankSoal", "==", kelompokNama)
+        );
+        const snap = await getDocs(q);
+
+        // Ambil daftar mapel unik dari hasil query soal
+        const mapels = snap.docs.map(d => d.data().mapel);
+        const uniqueMapels = Array.from(new Set(mapels)) as string[];
+
+        setFilteredMapelList(uniqueMapels);
+    } catch (e) {
+        console.error("Gagal filter mapel:", e);
     }
   };
 
@@ -273,20 +299,36 @@ export default function KelolaUjianSection() {
                 <div className="grid grid-cols-2 gap-4">
                   <div className="space-y-2">
                     <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest ml-1">Kelompok Soal</label>
-                    <select className="w-full p-4 bg-slate-50 border-2 border-slate-100 rounded-2xl text-xs font-bold outline-none focus:border-blue-500 transition-all" value={formData.kelompokId} onChange={e => {
-                      const sel = kelompokList.find(k => k.id === e.target.value);
-                      setFormData({...formData, kelompokId: e.target.value, kelompokNama: sel?.nama || ''});
-                    }}>
-                      <option value="">Pilih Kelompok</option>
-                      {kelompokList.map(k => <option key={k.id} value={k.id}>{k.nama}</option>)}
+                    <select 
+                        className="w-full p-4 bg-slate-50 border-2 border-slate-100 rounded-2xl text-xs font-bold outline-none focus:border-blue-500 transition-all" 
+                        value={formData.kelompokId} 
+                        onChange={e => {
+                        const sel = kelompokList.find(k => k.id === e.target.value);
+                        const namaKelompok = sel?.nama || '';
+                        setFormData({...formData, kelompokId: e.target.value, kelompokNama: namaKelompok});
+                        updateFilteredMapel(namaKelompok); // Jalankan filter mapel di sini
+                        }}
+                    >
+                        <option value="">Pilih Kelompok</option>
+                        {kelompokList.map(k => <option key={k.id} value={k.id}>{k.nama}</option>)}
                     </select>
                   </div>
                   <div className="space-y-2">
                     <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest ml-1">Mata Pelajaran</label>
-                    <select className="w-full p-4 bg-slate-50 border-2 border-slate-100 rounded-2xl text-xs font-bold outline-none focus:border-blue-500 transition-all" value={formData.mapel} onChange={e => setFormData({...formData, mapel: e.target.value})}>
-                      <option value="">Pilih Mapel</option>
-                      {mapelList.map(m => <option key={m.id} value={m.nama}>{m.nama}</option>)}
+                    <select 
+                        className="w-full p-4 bg-slate-50 border-2 border-slate-100 rounded-2xl text-xs font-bold outline-none focus:border-blue-500 transition-all" 
+                        value={formData.mapel} 
+                        onChange={e => setFormData({...formData, mapel: e.target.value})}
+                        disabled={!formData.kelompokId} // Kunci jika kelompok belum dipilih
+                    >
+                        <option value="">{formData.kelompokId ? "Pilih Mapel" : "Pilih Kelompok Dulu"}</option>
+                        {filteredMapelList.map(m => (
+                        <option key={m} value={m}>{m}</option>
+                        ))}
                     </select>
+                    {formData.kelompokId && filteredMapelList.length === 0 && (
+                        <p className="text-[9px] text-red-500 font-bold mt-1">* Belum ada soal di kelompok ini</p>
+                    )}
                   </div>
                 </div>
 

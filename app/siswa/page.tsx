@@ -76,7 +76,13 @@ export default function HalamanSiswa() {
           const allUjian = snap.docs.map(d => ({ id: d.id, ...d.data() }));
           
           // Filter ujian yang sesuai dengan kelas siswa
-          const filtered = allUjian.filter((u: any) => u.kelas === userData.kelas);
+          const filtered = allUjian.filter((u: any) => {
+            // Gunakan trim() untuk hapus spasi dan toUpperCase() agar tidak sensitif huruf besar/kecil
+            const kelasSiswa = userData.kelas?.toString().trim().toUpperCase();
+            const kelasUjian = u.kelas?.toString().trim().toUpperCase();
+            
+            return kelasUjian === kelasSiswa;
+          });
           setDaftarUjian(filtered);
         } catch (error) {
           console.error("Gagal mengambil jadwal:", error);

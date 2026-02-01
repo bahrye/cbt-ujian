@@ -18,16 +18,16 @@ const ReactQuill = dynamic(async () => {
   const { default: RQ } = await import('react-quill-new');
   const { Quill } = RQ;
 
-  // SOLUSI ERROR ATTRIBUTOR: Daftarkan Quill ke window secara global
+  // SOLUSI UTAMA: Daftarkan Quill ke window secara global sebelum import plugin
   if (typeof window !== 'undefined') {
     (window as any).Quill = Quill;
   }
 
-  // Impor ImageResize
+  // Import plugin setelah Quill ada di window
   // @ts-ignore
   const ImageResize = (await import('quill-image-resize-module-react')).default;
   
-  // Daftarkan modul
+  // Daftarkan modul ke Quill
   Quill.register('modules/imageResize', ImageResize);
   
   return RQ;
@@ -76,8 +76,8 @@ export default function BankSoalSection() {
       ['clean']
     ],
     imageResize: {
-      parchment: null, 
-      modules: ['Resize', 'DisplaySize', 'Toolbar'] // Memastikan Toolbar Alignment muncul
+      parchment: null, // Gunakan null jika menggunakan Quill versi terbaru
+      modules: ['Resize', 'DisplaySize', 'Toolbar'] // Toolbar sangat penting untuk posisi
     }
   };
 
@@ -257,27 +257,20 @@ export default function BankSoalSection() {
             <style>{`
               .ql-editor { min-height: 300px; font-size: 16px; }
               
-              /* Memastikan Resizer dan Toolbar Alignment muncul di atas segalanya */
-              .ql-image-resizer {
-                z-index: 50 !important;
-              }
-              
+              /* Memastikan Toolbar Resize Gambar Terlihat Jelas */
               .ql-image-resizer-toolbar {
-                background-color: #1e293b !important; /* Biru gelap Slate-800 */
-                border: 1px solid #334155 !important;
-                border-radius: 6px !important;
-                padding: 5px !important;
-                display: flex !important;
-                gap: 4px !important;
+                background-color: #1e293b !important; /* Warna Slate-800 */
+                border-radius: 8px !important;
+                padding: 4px !important;
                 z-index: 100 !important;
               }
-
+              
               .ql-image-resizer-toolbar span {
-                background: #334155 !important;
                 color: white !important;
-                border-radius: 4px !important;
-                padding: 2px 8px !important;
-                cursor: pointer !important;
+                border: 1px solid #475569 !important;
+                margin: 0 2px !important;
+                padding: 2px 5px !important;
+                background: #334155 !important;
               }
 
               .ql-image-resizer-toolbar span:hover {

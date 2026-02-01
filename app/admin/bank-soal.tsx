@@ -12,11 +12,11 @@ import {
 } from 'lucide-react';
 import dynamic from 'next/dynamic';
 
-const ReactQuill = dynamic(() => import('react-quill'), { 
+const ReactQuill = dynamic(() => import('react-quill-new'), { 
   ssr: false,
   loading: () => <div className="h-40 bg-slate-50 animate-pulse rounded-2xl" />
 });
-import 'react-quill/dist/quill.snow.css';
+import 'react-quill-new/dist/quill.snow.css';
 
 export default function BankSoalSection() {
   const [loading, setLoading] = useState(false);

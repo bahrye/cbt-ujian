@@ -17,6 +17,8 @@ import {
 } from 'lucide-react';
 import * as XLSX from 'xlsx';
 
+import KelolaMapelSection from './kelola-mapel'; // Pastikan path benar
+
 const firebaseConfig = {
   apiKey: "AIzaSyAssFyf3tsDnisxlZqdJKBUBi7mOM_HLXM",
   authDomain: "aplikasiujianonline-5be47.firebaseapp.com",
@@ -196,8 +198,9 @@ export default function AdminPage() {
           {activeMenu === 'Dashboard' && <DashboardOverview />}
           {activeMenu === 'Kelola User' && <UserManagementSection />}
           {activeMenu === 'Kelola Kelas' && <KelolaKelasSection />}
+          {activeMenu === 'Kelola Mapel' && <KelolaMapelSection />}
 
-          {activeMenu !== 'Dashboard' && activeMenu !== 'Kelola User' && activeMenu !== 'Kelola Kelas' && (
+          {activeMenu !== 'Dashboard' && activeMenu !== 'Kelola User' && activeMenu !== 'Kelola Kelas' && activeMenu !== 'Kelola Mapel' && (
             <div className="bg-white p-12 md:p-20 rounded-[3rem] border border-dashed border-slate-300 text-center space-y-4">
               <div className="mx-auto w-16 h-16 md:w-20 md:h-20 bg-slate-50 rounded-full flex items-center justify-center text-slate-300">
                 <Database size={32}/>

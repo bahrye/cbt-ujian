@@ -209,11 +209,26 @@ export default function BankSoalSection() {
             </div>
           </div>
 
-          <div className="bg-white p-4 rounded-3xl border shadow-sm">
-            <div className="relative w-full">
+          <div className="bg-white p-4 rounded-3xl border shadow-sm flex flex-col md:flex-row gap-4">
+            <div className="relative flex-1">
               <Search size={18} className="absolute left-4 top-1/2 -translate-y-1/2 text-slate-400" />
-              <input placeholder="Cari soal atau nama kelompok..." className="w-full pl-12 pr-4 py-4 bg-slate-50 border-2 border-slate-100 rounded-2xl text-sm font-bold outline-none focus:ring-2 focus:ring-blue-100" value={searchQuery} onChange={(e) => setSearchQuery(e.target.value)} />
+              <input 
+                placeholder="Cari soal atau nama kelompok..." 
+                className="w-full pl-12 pr-4 py-4 bg-slate-50 border-2 border-slate-100 rounded-2xl text-sm font-bold outline-none focus:ring-2 focus:ring-blue-100" 
+                value={searchQuery} 
+                onChange={(e) => setSearchQuery(e.target.value)} 
+              />
             </div>
+            <select 
+              className="md:w-64 p-4 bg-slate-50 border-2 border-slate-100 rounded-2xl text-sm font-bold outline-none focus:ring-2 focus:ring-blue-100"
+              value={filterMapel}
+              onChange={(e) => setFilterMapel(e.target.value)}
+            >
+              <option value="all">Semua Mata Pelajaran</option>
+              {mapelList.map(m => (
+                <option key={m.id} value={m.nama}>{m.nama}</option>
+              ))}
+            </select>
           </div>
 
           <div className="space-y-3">
@@ -228,6 +243,12 @@ export default function BankSoalSection() {
                   <div className="flex items-center gap-2 mb-1 flex-wrap">
                     <span className="text-[9px] font-black text-blue-600 uppercase bg-blue-50 px-2 py-0.5 rounded-lg">{s.namaBankSoal}</span>
                     <span className="text-[9px] font-bold text-slate-400 uppercase">{s.mapel}</span>
+                    
+                    {/* Menambahkan Label Tipe Soal */}
+                    <span className="text-[9px] font-bold text-amber-600 uppercase bg-amber-50 px-2 py-0.5 rounded-lg">
+                      {s.tipe?.replace('_', ' ') || 'Pilihan Ganda'}
+                    </span>
+
                     {s.pertanyaan?.includes('<img') && (
                       <span title="Berisi Gambar">
                         <ImageIcon size={14} className="text-purple-400" />

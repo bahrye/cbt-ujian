@@ -18,14 +18,16 @@ const ReactQuill = dynamic(async () => {
   const { Quill } = RQ;
 
   if (typeof window !== 'undefined') {
-    // Menetapkan Quill ke window agar bisa diakses oleh plugin non-ESM
+    // 1. Daftarkan Quill ke window
     window.Quill = Quill;
     
-    // Kadang Parchment perlu diekspos secara eksplisit untuk plugin lama
+    // 2. SOLUSI UTAMA: Ekspos Parchment secara eksplisit
+    // Plugin ImageResize mencari Quill.Parchment atau Parchment.Attributor
     const Parchment = Quill.import('parchment');
     window.Quill.Parchment = Parchment;
   }
 
+  // 3. Impor plugin setelah window.Quill siap
   const ImageResize = (await import('quill-image-resize-module-react')).default;
   Quill.register('modules/imageResize', ImageResize);
   
@@ -75,8 +77,8 @@ export default function BankSoalSection() {
       ['clean']
     ],
     imageResize: {
-      // HAPUS BARIS: parchment: null
-      modules: ['Resize', 'DisplaySize', 'Toolbar'] 
+      // Pastikan ini terisi modul yang diinginkan
+      modules: ['Resize', 'DisplaySize', 'Toolbar']
     }
   };
 
@@ -256,20 +258,29 @@ export default function BankSoalSection() {
             <style>{`
               .ql-editor { min-height: 300px; font-size: 16px; }
               
-              /* Memastikan Toolbar Resize Gambar Terlihat Jelas */
-              /* app/globals.css */
               .ql-image-resizer-toolbar {
                 display: flex !important;
                 visibility: visible !important;
                 z-index: 10000 !important;
-                background-color: #1e293b !important; /* Warna gelap agar kontras */
+                background-color: #1e293b !important;
+                border: 1px solid #475569 !important;
                 border-radius: 8px !important;
-                padding: 4px !important;
+                padding: 5px !important;
+                position: absolute !important;
               }
 
               .ql-image-resizer-toolbar span {
                 color: white !important;
+                padding: 2px 8px !important;
                 cursor: pointer !important;
+              }
+
+              .ql-image-resizer-handle {
+                background-color: #3b82f6 !important; /* Warna biru */
+                border: 1px solid white !important;
+                width: 12px !important;
+                height: 12px !important;
+                z-index: 10001 !important;
               }
 
               .ql-image-resizer-toolbar span:hover {

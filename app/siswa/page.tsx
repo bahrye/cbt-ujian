@@ -1,221 +1,202 @@
 'use client'
 import { useState, useEffect } from 'react';
 import { db, auth } from '@/lib/firebase';
+import { onAuthStateChanged, User as FirebaseUser } from 'firebase/auth';
 import { 
-  doc, 
-  getDocs, 
-  setDoc, 
-  updateDoc, 
-  onSnapshot, 
-  collection, 
-  query, 
-  orderBy 
+  doc, getDoc, getDocs, setDoc, updateDoc, onSnapshot, 
+  collection, query, orderBy, where 
 } from 'firebase/firestore';
+import { useRouter } from 'next/navigation';
+import { 
+  LayoutDashboard, FileText, BarChart3, LogOut, Menu, 
+  X, ShieldCheck, ChevronRight, Loader2, ClipboardCheck, Clock
+} from 'lucide-react';
 
-export default function HalamanUjianSiswa() {
-  // State Management
+export default function HalamanSiswa() {
+  const [activeMenu, setActiveMenu] = useState('Dashboard');
+  const [isSidebarOpen, setIsSidebarOpen] = useState(true);
+  const [isMobileOpen, setIsMobileOpen] = useState(false);
+  const [authorized, setAuthorized] = useState(false);
+  const [userData, setUserData] = useState<any>(null);
+  const router = useRouter();
+
+  // State untuk Ujian
   const [isVerified, setIsVerified] = useState(false);
   const [tokenInput, setTokenInput] = useState('');
   const [tokenAsli, setTokenAsli] = useState('');
   const [daftarSoal, setDaftarSoal] = useState<any[]>([]);
   const [violations, setViolations] = useState(0);
-  const [timeLeft, setTimeLeft] = useState(3600); // Default 60 Menit
+  const [timeLeft, setTimeLeft] = useState(3600);
   const [jawabanSiswa, setJawabanSiswa] = useState<{ [key: string]: string }>({});
 
-  // 1. Ambil Token Aktif dari Pengawas (Real-time)
+  const menuItems = [
+    { name: 'Dashboard', icon: <LayoutDashboard size={20}/> },
+    { name: 'Tata Tertib', icon: <FileText size={20}/> },
+    { name: 'Hasil Ujian', icon: <BarChart3 size={20}/> },
+  ];
+
+  // --- AUTH CHECK ---
+  useEffect(() => {
+    const unsubscribe = onAuthStateChanged(auth, async (user: FirebaseUser | null) => {
+      if (user) {
+        try {
+          const userDoc = await getDoc(doc(db, "users", user.email?.split('@')[0] || "")); 
+          // Catatan: Sesuaikan key doc dengan sistem login Anda (UID atau ID/Username)
+          if (userDoc.exists()) {
+            setUserData(userDoc.data());
+            setAuthorized(true);
+          } else {
+            router.push('/login');
+          }
+        } catch (error) {
+          router.push('/login');
+        }
+      } else {
+        router.push('/login');
+      }
+    });
+    return () => unsubscribe();
+  }, [router]);
+
+  // --- TOKEN SNAPSHOT ---
   useEffect(() => {
     const unsub = onSnapshot(doc(db, "settings", "ujian_aktif"), (docSnap) => {
-      if (docSnap.exists()) {
-        setTokenAsli(docSnap.data().token);
-      }
+      if (docSnap.exists()) setTokenAsli(docSnap.data().token);
     });
     return () => unsub();
   }, []);
 
-  // 2. Sistem Anti-Contek & Timer (Hanya aktif jika sudah masuk ujian)
-  useEffect(() => {
-    if (!isVerified) return;
-
-    // Fungsi mencatat pelanggaran ke Firebase
-    const laporPelanggaran = async (jumlahBaru: number) => {
-      const user = auth.currentUser;
-      if (user) {
-        await updateDoc(doc(db, "ujian_berjalan", user.uid), {
-          violations: jumlahBaru,
-          lastViolation: new Date()
-        });
-      }
-    };
-
-    const handleViolation = () => {
-      setViolations((v) => {
-        const newCount = v + 1;
-        laporPelanggaran(newCount);
-        return newCount;
-      });
-      alert("PERINGATAN! Anda terdeteksi meninggalkan halaman ujian. Pelanggaran dicatat!");
-    };
-
-    // Event Listeners untuk deteksi tab/jendela
-    const handleVisibility = () => { if (document.hidden) handleViolation(); };
-    const handleBlur = () => { handleViolation(); };
-
-    document.addEventListener("visibilitychange", handleVisibility);
-    window.addEventListener("blur", handleBlur);
-
-    // Timer Countdown
-    const timer = setInterval(() => {
-      setTimeLeft((prev) => {
-        if (prev <= 1) {
-          clearInterval(timer);
-          handleSelesaiUjian(); // Otomatis selesai jika waktu habis
-          return 0;
-        }
-        return prev - 1;
-      });
-    }, 1000);
-
-    return () => {
-      document.removeEventListener("visibilitychange", handleVisibility);
-      window.removeEventListener("blur", handleBlur);
-      clearInterval(timer);
-    };
-  }, [isVerified]);
-
-  // 3. Ambil Soal dari Bank Soal setelah Token Benar
-  const fetchSoal = async () => {
-    const q = query(collection(db, "bank_soal"), orderBy("createdAt", "asc"));
-    const querySnapshot = await getDocs(q);
-    const data = querySnapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
-    setDaftarSoal(data);
+  const handleMenuClick = (name: string) => {
+    setActiveMenu(name);
+    setIsMobileOpen(false);
   };
 
-  // 4. Verifikasi Token & Mulai Ujian
-  const handleStartUjian = async () => {
-    if (tokenInput.toUpperCase() === tokenAsli) {
-      const user = auth.currentUser;
-      if (user) {
-        // Daftarkan siswa ke tabel monitoring Pengawas
-        await setDoc(doc(db, "ujian_berjalan", user.uid), {
-          nama: user.email?.split('@')[0] || "Siswa",
-          email: user.email,
-          violations: 0,
-          status: 'Mengerjakan',
-          mulaiAt: new Date()
-        });
-        await fetchSoal();
-        setIsVerified(true);
-      }
-    } else {
-      alert("Token salah! Silakan minta token terbaru ke pengawas.");
-    }
-  };
+  if (!authorized) return (
+    <div className="min-h-screen flex items-center justify-center bg-white">
+      <Loader2 className="w-10 h-10 animate-spin text-blue-600" />
+    </div>
+  );
 
-  // 5. Simpan Jawaban ke State
-  const handlePilihJawaban = (soalId: string, pilihan: string) => {
-    setJawabanSiswa(prev => ({ ...prev, [soalId]: pilihan }));
-  };
+  return (
+    <div className="min-h-screen bg-slate-50 flex font-sans overflow-x-hidden">
+      
+      {/* --- OVERLAY MOBILE --- */}
+      {isMobileOpen && (
+        <div className="fixed inset-0 bg-slate-900/40 backdrop-blur-sm z-30 lg:hidden" onClick={() => setIsMobileOpen(false)}/>
+      )}
 
-  // 6. Selesai Ujian
-  const handleSelesaiUjian = async () => {
-    const user = auth.currentUser;
-    if (user && confirm("Apakah Anda yakin ingin mengakhiri ujian?")) {
-      await updateDoc(doc(db, "ujian_berjalan", user.uid), {
-        status: 'Selesai',
-        selesaiAt: new Date(),
-        jawaban: jawabanSiswa
-      });
-      alert("Ujian selesai. Terima kasih!");
-      window.location.reload(); // Reset halaman
-    }
-  };
+      {/* --- SIDEBAR --- */}
+      <aside className={`fixed inset-y-0 left-0 z-40 bg-white border-r transition-all duration-300 transform
+        ${isMobileOpen ? 'translate-x-0 w-72' : '-translate-x-full lg:translate-x-0'}
+        ${isSidebarOpen ? 'lg:w-72' : 'lg:w-20'} flex flex-col h-full`}>
+        
+        <div className="p-6 flex items-center justify-between border-b mb-4">
+          <div className="flex items-center gap-3">
+            <div className="p-2 bg-blue-600 rounded-xl text-white shadow-lg shrink-0">
+              <ShieldCheck size={24}/>
+            </div>
+            {(isSidebarOpen || isMobileOpen) && (
+              <div>
+                <h1 className="text-lg font-black text-slate-800 uppercase tracking-tighter leading-none">CBT SISWA</h1>
+                <p className="text-[9px] text-slate-400 font-bold uppercase tracking-widest mt-1">{userData?.kelas || 'Tanpa Kelas'}</p>
+              </div>
+            )}
+          </div>
+          <button onClick={() => setIsMobileOpen(false)} className="lg:hidden p-2 text-slate-400"><X size={20}/></button>
+        </div>
 
-  // Format Waktu MM:SS
-  const formatTime = (s: number) => {
-    const m = Math.floor(s / 60);
-    const sec = s % 60;
-    return `${m}:${sec.toString().padStart(2, '0')}`;
-  };
+        <nav className="flex-1 px-4 space-y-1">
+          {menuItems.map((item) => (
+            <button
+              key={item.name}
+              onClick={() => handleMenuClick(item.name)}
+              className={`w-full flex items-center gap-4 p-3.5 rounded-2xl transition-all group ${
+                activeMenu === item.name ? 'bg-blue-600 text-white shadow-xl' : 'text-slate-500 hover:bg-slate-50'
+              }`}
+            >
+              <div className={`${activeMenu === item.name ? 'text-white' : 'text-slate-400 group-hover:text-blue-600'}`}>{item.icon}</div>
+              {(isSidebarOpen || isMobileOpen) && <span className="text-sm font-bold">{item.name}</span>}
+            </button>
+          ))}
+        </nav>
 
-  // Tampilan 1: Input Token
-  if (!isVerified) {
-    return (
-      <div className="min-h-screen flex items-center justify-center bg-gray-50 p-4">
-        <div className="bg-white p-8 rounded-2xl shadow-xl w-full max-w-md border border-gray-100">
-          <h2 className="text-3xl font-extrabold mb-2 text-blue-700">CBT Online</h2>
-          <p className="text-gray-500 mb-8 text-sm">Masukkan token ujian untuk memvalidasi akses Anda.</p>
-          <input 
-            type="text" 
-            placeholder="Ketik 6 Digit Token" 
-            className="w-full border-2 border-blue-100 p-4 rounded-xl text-center text-3xl font-mono uppercase focus:border-blue-500 outline-none mb-6 transition-all"
-            onChange={(e) => setTokenInput(e.target.value)}
-          />
-          <button 
-            onClick={handleStartUjian}
-            className="w-full bg-blue-600 text-white py-4 rounded-xl font-bold text-lg hover:shadow-lg hover:bg-blue-700 transition-all"
-          >
-            Masuk Ruang Ujian
+        <div className="p-4 border-t">
+          <button onClick={() => auth.signOut().then(() => router.push('/login'))} className="w-full flex items-center gap-4 p-3.5 text-red-500 hover:bg-red-50 rounded-2xl font-bold text-sm">
+            <LogOut size={20}/>
+            {(isSidebarOpen || isMobileOpen) && <span>Keluar</span>}
           </button>
         </div>
-      </div>
-    );
-  }
+      </aside>
 
-  // Tampilan 2: Lembar Ujian
-  return (
-    <div className="min-h-screen bg-gray-50 pb-20">
-      {/* Header Bar */}
-      <div className="sticky top-0 z-50 bg-white border-b p-4 flex justify-between items-center px-4 md:px-20 shadow-sm">
-        <div>
-          <h1 className="font-bold text-blue-800">Ujian Berlangsung</h1>
-          <p className="text-xs font-semibold text-red-500">Pelanggaran: {violations}</p>
-        </div>
-        <div className="flex items-center gap-4">
-          <div className="bg-red-100 text-red-700 px-4 py-2 rounded-full font-mono font-bold">
-            ⏱️ {formatTime(timeLeft)}
+      {/* --- MAIN CONTENT --- */}
+      <main className={`flex-1 transition-all duration-300 min-h-screen ${isSidebarOpen ? 'lg:ml-72' : 'lg:ml-20'} p-4 md:p-8`}>
+        <header className="flex justify-between items-center mb-8 bg-white p-4 rounded-3xl border shadow-sm sticky top-4 z-20">
+          <div className="flex items-center gap-4">
+            <button onClick={() => setIsMobileOpen(true)} className="lg:hidden p-2.5 bg-slate-50 text-blue-600 rounded-xl"><Menu size={22}/></button>
+            <button onClick={() => setIsSidebarOpen(!isSidebarOpen)} className="hidden lg:block p-2 text-slate-600"><Menu size={24}/></button>
+            <h2 className="text-xs font-black text-slate-800 uppercase tracking-widest">{activeMenu}</h2>
           </div>
-        </div>
-      </div>
-
-      <div className="max-w-3xl mx-auto mt-8 p-4">
-        {daftarSoal.length === 0 ? (
-          <p className="text-center text-gray-500">Memuat soal...</p>
-        ) : (
-          daftarSoal.map((s, index) => (
-            <div key={s.id} className="bg-white p-6 rounded-2xl shadow-sm mb-6 border border-gray-100">
-              <p className="text-lg font-semibold mb-6 text-gray-800">
-                <span className="text-blue-600 mr-2">{index + 1}.</span> {s.pertanyaan}
-              </p>
-              <div className="grid grid-cols-1 gap-3">
-                {s.opsi.map((opsi: string, i: number) => (
-                  <label 
-                    key={i} 
-                    className={`flex items-center p-4 border-2 rounded-xl cursor-pointer transition-all ${
-                      jawabanSiswa[s.id] === opsi ? 'border-blue-500 bg-blue-50' : 'border-gray-100 hover:border-gray-200'
-                    }`}
-                  >
-                    <input 
-                      type="radio" 
-                      name={s.id} 
-                      className="w-5 h-5 mr-4 accent-blue-600"
-                      onChange={() => handlePilihJawaban(s.id, opsi)}
-                      checked={jawabanSiswa[s.id] === opsi}
-                    />
-                    <span className="text-gray-700">{opsi}</span>
-                  </label>
-                ))}
-              </div>
+          
+          <div className="flex items-center gap-3 pl-4 border-l">
+            <div className="text-right hidden md:block">
+              <p className="text-[10px] font-black text-slate-400 uppercase leading-none">Siswa</p>
+              <p className="text-xs font-bold text-slate-800">{userData?.nama || 'User'}</p>
             </div>
-          ))
-        )}
+            <div className="w-10 h-10 bg-blue-100 rounded-2xl flex items-center justify-center font-bold text-blue-600">
+              {userData?.nama?.charAt(0) || 'S'}
+            </div>
+          </div>
+        </header>
 
-        <button 
-          onClick={handleSelesaiUjian}
-          className="mt-10 w-full bg-green-600 text-white py-5 rounded-2xl font-black text-xl hover:bg-green-700 shadow-xl"
-        >
-          KIRIM JAWABAN SEKARANG
-        </button>
-      </div>
+        {/* --- DYNAMIC CONTENT --- */}
+        <section className="animate-in fade-in slide-in-from-bottom-4 duration-500 max-w-7xl mx-auto">
+          {activeMenu === 'Dashboard' && (
+            <div className="space-y-6">
+               <div className="bg-white p-8 rounded-[2.5rem] border shadow-sm">
+                  <h3 className="text-xl font-black text-slate-800 uppercase tracking-tighter mb-4">Jadwal Ujian Aktif</h3>
+                  <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                    {/* Placeholder Jadwal Berdasarkan Kelas Siswa */}
+                    <div className="p-6 bg-slate-50 rounded-3xl border border-slate-100 flex justify-between items-center">
+                      <div>
+                        <p className="text-[10px] font-bold text-blue-600 uppercase tracking-widest">Mata Pelajaran</p>
+                        <h4 className="text-lg font-black text-slate-800">Matematika Wajib</h4>
+                        <div className="flex items-center gap-2 text-slate-500 text-xs mt-1 font-bold">
+                          <Clock size={14}/> 08:00 - 09:30
+                        </div>
+                      </div>
+                      <button 
+                        onClick={() => {/* Logika buka modal token */}}
+                        className="bg-blue-600 text-white px-6 py-3 rounded-2xl text-[10px] font-black uppercase tracking-widest"
+                      >
+                        Ikuti Ujian
+                      </button>
+                    </div>
+                  </div>
+               </div>
+            </div>
+          )}
+
+          {activeMenu === 'Tata Tertib' && (
+            <div className="bg-white p-8 rounded-[2.5rem] border shadow-sm space-y-4">
+              <h3 className="text-xl font-black text-slate-800 uppercase tracking-tighter">Tata Tertib Peserta</h3>
+              <ul className="space-y-3 text-sm text-slate-600 font-medium list-disc pl-5">
+                <li>Siswa wajib login menggunakan akun yang sudah diberikan.</li>
+                <li>Dilarang membuka tab baru atau pindah aplikasi selama ujian berlangsung.</li>
+                <li>Setiap pelanggaran (pindah tab) akan dicatat oleh sistem secara otomatis.</li>
+                <li>Pastikan koneksi internet stabil sebelum menekan tombol "Kirim Jawaban".</li>
+              </ul>
+            </div>
+          )}
+
+          {activeMenu === 'Hasil Ujian' && (
+            <div className="bg-white p-12 rounded-[2.5rem] border border-dashed text-center">
+              <BarChart3 size={48} className="mx-auto text-slate-300 mb-4"/>
+              <h3 className="text-lg font-black text-slate-400 uppercase tracking-widest">Belum Ada Hasil</h3>
+              <p className="text-sm text-slate-400 italic">Nilai akan muncul setelah jadwal ujian berakhir.</p>
+            </div>
+          )}
+        </section>
+      </main>
     </div>
   );
 }

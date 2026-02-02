@@ -3,35 +3,21 @@ import { useState, useEffect } from 'react';
 import { db, auth } from '@/lib/firebase';
 import { onAuthStateChanged } from 'firebase/auth';
 import { 
-  collection, query, where, doc, getDoc, onSnapshot 
+  collection, query, where, getDocs, doc, getDoc, onSnapshot 
 } from 'firebase/firestore';
 import { useRouter } from 'next/navigation';
 import { 
   LayoutDashboard, Key, Monitor, FileText, LogOut, Menu, 
-  ShieldCheck, Search, Users, AlertTriangle,
-  Clock, BookOpen, Filter, Loader2
+  ShieldCheck, Search, Users, AlertTriangle, CheckCircle2,
+  Clock, BookOpen, Filter, Loader2, UserCheck
 } from 'lucide-react';
 
-// Fungsi generator token 6 digit yang berubah tiap 15 menit
-const generateDynamicToken = (examId: string) => {
-  if (!examId) return "";
+// Fungsi generator token lokal
+const generateDynamicToken = (baseToken: string) => {
+  if (!baseToken) return "";
   const now = new Date();
   const interval = Math.floor(now.getTime() / (15 * 60 * 1000));
-  
-  const seed = `${examId}-${interval}`;
-  let hash = 0;
-  for (let i = 0; i < seed.length; i++) {
-    hash = ((hash << 5) - hash) + seed.charCodeAt(i);
-    hash |= 0;
-  }
-  
-  const chars = "ABCDEFGHJKLMNPQRSTUVWXYZ23456789";
-  let result = "";
-  const absHash = Math.abs(hash);
-  for (let i = 0; i < 6; i++) {
-    result += chars.charAt((absHash >> (i * 5)) % chars.length);
-  }
-  return result;
+  return btoa(`${baseToken}-${interval}`).substring(0, 6).toUpperCase();
 };
 
 export default function HalamanPengawas() {
@@ -43,13 +29,14 @@ export default function HalamanPengawas() {
   const [loading, setLoading] = useState(true);
   const router = useRouter();
 
+  // State Data
   const [daftarUjianAktif, setDaftarUjianAktif] = useState<any[]>([]);
   const [monitoringSiswa, setMonitoringSiswa] = useState<any[]>([]);
   const [filterKelas, setFilterKelas] = useState('Semua');
   const [searchQuery, setSearchQuery] = useState('');
   
+  // State untuk token yang berubah otomatis
   const [dynamicTokens, setDynamicTokens] = useState<{ [key: string]: string }>({});
-  const [showTokens, setShowTokens] = useState<{ [key: string]: boolean }>({});
 
   const menuItems = [
     { name: 'Dashboard', icon: <LayoutDashboard size={20}/> },
@@ -58,7 +45,7 @@ export default function HalamanPengawas() {
     { name: 'Tata Tertib', icon: <FileText size={20}/> },
   ];
 
-  // 1. AUTHENTICATION & GET USER DATA
+  // --- 1. AUTHENTICATION & AUTHORIZATION ---
   useEffect(() => {
     const unsubscribe = onAuthStateChanged(auth, async (user) => {
       if (user) {
@@ -69,12 +56,16 @@ export default function HalamanPengawas() {
           if (authDoc.exists()) {
             const authData = authDoc.data();
             if (authData.role === 'pengawas') {
-              const profileDoc = await getDoc(doc(db, "users", authData.username));
-              setUserData({
-                ...(profileDoc.exists() ? profileDoc.data() : {}),
-                username: authData.username,
-                nama: profileDoc.exists() ? profileDoc.data().nama : authData.username
-              });
+              if (authData.username) {
+                const profileDoc = await getDoc(doc(db, "users", authData.username));
+                if (profileDoc.exists()) {
+                  setUserData(profileDoc.data());
+                } else {
+                  setUserData({ nama: authData.username });
+                }
+              } else {
+                setUserData({ nama: "Pengawas" });
+              }
               setAuthorized(true);
             } else {
               router.push('/login');
@@ -83,7 +74,6 @@ export default function HalamanPengawas() {
             router.push('/login');
           }
         } catch (error) {
-          console.error("Auth error:", error);
           router.push('/login');
         }
       } else {
@@ -94,56 +84,42 @@ export default function HalamanPengawas() {
     return () => unsubscribe();
   }, [router]);
 
-  // 2. FETCH UJIAN AKTIF (DIFILTER BERDASARKAN USERNAME PENGAWAS)
+  // --- 2. FETCH UJIAN AKTIF ---
   useEffect(() => {
-    if (!authorized || !userData?.username) return;
-    
-    // Filter berdasarkan status 'aktif' dan field 'pengawas' yang berisi username
-    const q = query(
-      collection(db, "ujian"), 
-      where("status", "==", "aktif"),
-      where("pengawas", "==", userData.username)
-    );
-    
+    if (!authorized) return;
+    const q = query(collection(db, "ujian"), where("status", "==", "aktif"));
     const unsubscribe = onSnapshot(q, (snapshot) => {
       const data = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
       setDaftarUjianAktif(data);
-    }, (error) => {
-      console.error("Firestore error:", error);
     });
-    
     return () => unsubscribe();
-  }, [authorized, userData?.username]);
+  }, [authorized]);
 
-  // 3. LOGIKA UPDATE TOKEN
+  // --- 3. LOGIKA UPDATE TOKEN DINAMIS (SETIAP 1 MENIT) ---
   useEffect(() => {
     const updateAllTokens = () => {
       const newTokens: { [key: string]: string } = {};
       daftarUjianAktif.forEach(u => {
-        newTokens[u.id] = generateDynamicToken(u.id);
+        newTokens[u.id] = generateDynamicToken(u.token);
       });
       setDynamicTokens(newTokens);
     };
 
     updateAllTokens();
-    const intervalId = setInterval(updateAllTokens, 30000); 
+    const intervalId = setInterval(updateAllTokens, 60000); // Sinkronisasi internal setiap 60 detik
     return () => clearInterval(intervalId);
   }, [daftarUjianAktif]);
 
-  // 4. FETCH MONITORING SISWA
+  // --- 4. FETCH MONITORING SISWA REAL-TIME ---
   useEffect(() => {
-    if (!authorized || daftarUjianAktif.length === 0) return;
-    
-    const examIds = daftarUjianAktif.map(u => u.id);
+    if (!authorized) return;
     const q = collection(db, "ujian_berjalan");
-    
     const unsubscribe = onSnapshot(q, (snapshot) => {
       const data = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
-      const filteredMonitoring = data.filter((s: any) => examIds.includes(s.examId));
-      setMonitoringSiswa(filteredMonitoring);
+      setMonitoringSiswa(data);
     });
     return () => unsubscribe();
-  }, [authorized, daftarUjianAktif]);
+  }, [authorized]);
 
   const daftarKelas = Array.from(new Set(daftarUjianAktif.flatMap(u => 
     Array.isArray(u.kelas) ? u.kelas : [u.kelas]
@@ -255,13 +231,13 @@ export default function HalamanPengawas() {
                   <h4 className="text-lg font-black text-slate-800 uppercase leading-tight mb-2 tracking-tighter">{ujian.namaUjian}</h4>
                   <div className="space-y-2 mb-6">
                     <div className="flex items-center gap-2 text-xs font-bold text-slate-500"><Clock size={14} className="text-indigo-400"/> {ujian.durasi} Menit</div>
-                    <div className="flex items-center gap-2 text-xs font-bold text-slate-500"><Users size={14} className="text-indigo-400"/> Sesi: {ujian.sesi || '1'}</div>
+                    <div className="flex items-center gap-2 text-xs font-bold text-slate-500"><Users size={14} className="text-indigo-400"/> Kelas: {Array.isArray(ujian.kelas) ? ujian.kelas.join(", ") : ujian.kelas}</div>
                   </div>
                 </div>
               ))}
               {daftarUjianAktif.length === 0 && (
                 <div className="col-span-full py-20 bg-white rounded-[2.5rem] border border-dashed text-center">
-                  <p className="text-slate-400 font-bold uppercase tracking-widest text-sm">Tidak ada jadwal ujian untuk tugas Anda saat ini</p>
+                  <p className="text-slate-400 font-bold uppercase tracking-widest text-sm">Tidak ada ujian aktif saat ini</p>
                 </div>
               )}
             </div>
@@ -273,7 +249,7 @@ export default function HalamanPengawas() {
             <div className="bg-indigo-600 p-8 rounded-[2.5rem] text-white shadow-xl shadow-indigo-100 relative overflow-hidden">
                <div className="relative z-10">
                 <h3 className="text-2xl font-black uppercase tracking-tighter">Pusat Token Ujian</h3>
-                <p className="text-indigo-100 text-xs font-medium mt-2 italic">Klik tombol generate untuk melihat token. Token berubah tiap 15 menit.</p>
+                <p className="text-indigo-100 text-xs font-medium mt-2 italic">Token di bawah ini berubah otomatis setiap 15 menit demi keamanan.</p>
                </div>
                <Key size={120} className="absolute -right-4 -bottom-4 text-white/10 rotate-12" />
             </div>
@@ -285,22 +261,11 @@ export default function HalamanPengawas() {
                     <p className="text-[10px] font-black text-slate-400 uppercase tracking-widest leading-none mb-1">Mata Pelajaran</p>
                     <p className="font-bold text-slate-800 uppercase tracking-tighter">{u.mapel} - {u.namaUjian}</p>
                   </div>
-                  <div className="flex flex-col items-center">
-                    {!showTokens[u.id] ? (
-                      <button 
-                        onClick={() => setShowTokens(prev => ({...prev, [u.id]: true}))}
-                        className="bg-indigo-600 hover:bg-indigo-700 text-white px-8 py-3 rounded-2xl font-black text-xs uppercase tracking-widest transition-all"
-                      >
-                        Generate Token
-                      </button>
-                    ) : (
-                      <div className="text-center bg-slate-50 border-2 border-dashed border-indigo-200 px-10 py-4 rounded-2xl animate-in zoom-in">
-                        <p className="text-[10px] font-black text-indigo-400 uppercase mb-1 leading-none">Token Aktif Saat Ini</p>
-                        <p className="text-4xl font-black text-indigo-600 tracking-[0.2em]">
-                            {dynamicTokens[u.id] || "......"}
-                        </p>
-                      </div>
-                    )}
+                  <div className="text-center bg-slate-50 border-2 border-dashed border-indigo-200 px-10 py-4 rounded-2xl">
+                    <p className="text-[10px] font-black text-indigo-400 uppercase mb-1 leading-none">Token Aktif Saat Ini</p>
+                    <p className="text-4xl font-black text-indigo-600 tracking-[0.2em]">
+                        {dynamicTokens[u.id] || "..."}
+                    </p>
                   </div>
                 </div>
               ))}
@@ -387,11 +352,19 @@ export default function HalamanPengawas() {
             <div className="space-y-6 text-slate-600 font-bold text-sm leading-relaxed">
               <div className="flex gap-4">
                  <span className="w-8 h-8 bg-slate-100 rounded-lg flex items-center justify-center shrink-0">1</span>
-                 <p>Dilarang memberikan token kepada siswa di luar jadwal yang telah ditentukan.</p>
+                 <p>Dilarang memberikan token kepada siswa di luar jadwal yang telah ditentukan atau di luar ruangan ujian.</p>
               </div>
               <div className="flex gap-4">
                  <span className="w-8 h-8 bg-slate-100 rounded-lg flex items-center justify-center shrink-0">2</span>
-                 <p>Pantau menu Monitor Ujian secara berkala untuk melihat aktivitas mencurigakan siswa.</p>
+                 <p>Pantau menu Monitor Ujian secara berkala. Sistem akan mencatat setiap kali siswa berpindah tab atau meminimalkan browser.</p>
+              </div>
+              <div className="flex gap-4">
+                 <span className="w-8 h-8 bg-slate-100 rounded-lg flex items-center justify-center shrink-0">3</span>
+                 <p>Verifikasi Kehadiran: Pastikan tanda tangan yang muncul di monitor sesuai dengan siswa yang hadir di ruangan.</p>
+              </div>
+              <div className="flex gap-4">
+                 <span className="w-8 h-8 bg-slate-100 rounded-lg flex items-center justify-center shrink-0">4</span>
+                 <p>Tindakan Pelanggaran: Jika siswa melampaui batas pelanggaran yang wajar, pengawas berhak melakukan tindakan diskualifikasi sesuai aturan sekolah.</p>
               </div>
             </div>
           </div>

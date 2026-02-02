@@ -3,23 +3,21 @@ import { useState, useEffect } from 'react';
 import { db, auth } from '@/lib/firebase';
 import { onAuthStateChanged } from 'firebase/auth';
 import { 
-  collection, query, where, getDocs, doc, getDoc, onSnapshot 
+  collection, query, where, doc, getDoc, onSnapshot 
 } from 'firebase/firestore';
 import { useRouter } from 'next/navigation';
 import { 
   LayoutDashboard, Key, Monitor, FileText, LogOut, Menu, 
-  ShieldCheck, Search, Users, AlertTriangle, CheckCircle2,
-  Clock, BookOpen, Filter, Loader2, UserCheck
+  ShieldCheck, Search, Users, AlertTriangle,
+  Clock, BookOpen, Filter, Loader2
 } from 'lucide-react';
 
-// Fungsi generator token 6 digit (Huruf & Angka) yang berubah tiap 15 menit
+// Fungsi generator token 6 digit yang berubah tiap 15 menit
 const generateDynamicToken = (examId: string) => {
   if (!examId) return "";
   const now = new Date();
-  // Interval 15 menit
   const interval = Math.floor(now.getTime() / (15 * 60 * 1000));
   
-  // Seed berdasarkan ID ujian dan interval waktu
   const seed = `${examId}-${interval}`;
   let hash = 0;
   for (let i = 0; i < seed.length; i++) {
@@ -27,7 +25,6 @@ const generateDynamicToken = (examId: string) => {
     hash |= 0;
   }
   
-  // Karakter aman (menghindari karakter yang mirip seperti 0 dan O)
   const chars = "ABCDEFGHJKLMNPQRSTUVWXYZ23456789";
   let result = "";
   const absHash = Math.abs(hash);
@@ -46,13 +43,11 @@ export default function HalamanPengawas() {
   const [loading, setLoading] = useState(true);
   const router = useRouter();
 
-  // State Data
   const [daftarUjianAktif, setDaftarUjianAktif] = useState<any[]>([]);
   const [monitoringSiswa, setMonitoringSiswa] = useState<any[]>([]);
   const [filterKelas, setFilterKelas] = useState('Semua');
   const [searchQuery, setSearchQuery] = useState('');
   
-  // State Token & Visibility
   const [dynamicTokens, setDynamicTokens] = useState<{ [key: string]: string }>({});
   const [showTokens, setShowTokens] = useState<{ [key: string]: boolean }>({});
 
@@ -63,7 +58,7 @@ export default function HalamanPengawas() {
     { name: 'Tata Tertib', icon: <FileText size={20}/> },
   ];
 
-  // --- 1. AUTHENTICATION & DATA PENGAWAS ---
+  // 1. AUTHENTICATION & GET USER DATA
   useEffect(() => {
     const unsubscribe = onAuthStateChanged(auth, async (user) => {
       if (user) {
@@ -75,11 +70,11 @@ export default function HalamanPengawas() {
             const authData = authDoc.data();
             if (authData.role === 'pengawas') {
               const profileDoc = await getDoc(doc(db, "users", authData.username));
-              if (profileDoc.exists()) {
-                setUserData({ ...profileDoc.data(), username: authData.username });
-              } else {
-                setUserData({ nama: authData.username, username: authData.username });
-              }
+              setUserData({
+                ...(profileDoc.exists() ? profileDoc.data() : {}),
+                username: authData.username,
+                nama: profileDoc.exists() ? profileDoc.data().nama : authData.username
+              });
               setAuthorized(true);
             } else {
               router.push('/login');
@@ -88,6 +83,7 @@ export default function HalamanPengawas() {
             router.push('/login');
           }
         } catch (error) {
+          console.error("Auth error:", error);
           router.push('/login');
         }
       } else {
@@ -98,27 +94,28 @@ export default function HalamanPengawas() {
     return () => unsubscribe();
   }, [router]);
 
-  // --- 2. FETCH UJIAN AKTIF (DIFILTER BERDASARKAN PENUGASAN PENGAWAS) ---
+  // 2. FETCH UJIAN AKTIF (DIFILTER BERDASARKAN USERNAME PENGAWAS)
   useEffect(() => {
-    if (!authorized || !userData) return;
+    if (!authorized || !userData?.username) return;
     
-    // Mengambil semua ujian yang statusnya aktif
-    const q = query(collection(db, "ujian"), where("status", "==", "aktif"));
+    // Filter berdasarkan status 'aktif' dan field 'pengawas' yang berisi username
+    const q = query(
+      collection(db, "ujian"), 
+      where("status", "==", "aktif"),
+      where("pengawas", "==", userData.username)
+    );
     
     const unsubscribe = onSnapshot(q, (snapshot) => {
-      const allActiveExams = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
-      
-      // Filter di sisi client: hanya tampilkan jika nama/username pengawas cocok dengan data di 'ujian'
-      const assignedExams = allActiveExams.filter((u: any) => 
-        u.pengawas === userData.nama || u.pengawas === userData.username
-      );
-      
-      setDaftarUjianAktif(assignedExams);
+      const data = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
+      setDaftarUjianAktif(data);
+    }, (error) => {
+      console.error("Firestore error:", error);
     });
+    
     return () => unsubscribe();
-  }, [authorized, userData]);
+  }, [authorized, userData?.username]);
 
-  // --- 3. LOGIKA UPDATE TOKEN DINAMIS ---
+  // 3. LOGIKA UPDATE TOKEN
   useEffect(() => {
     const updateAllTokens = () => {
       const newTokens: { [key: string]: string } = {};
@@ -129,18 +126,19 @@ export default function HalamanPengawas() {
     };
 
     updateAllTokens();
-    const intervalId = setInterval(updateAllTokens, 30000); // Cek setiap 30 detik untuk akurasi interval 15 menit
+    const intervalId = setInterval(updateAllTokens, 30000); 
     return () => clearInterval(intervalId);
   }, [daftarUjianAktif]);
 
-  // --- 4. FETCH MONITORING SISWA REAL-TIME ---
+  // 4. FETCH MONITORING SISWA
   useEffect(() => {
-    if (!authorized) return;
+    if (!authorized || daftarUjianAktif.length === 0) return;
+    
+    const examIds = daftarUjianAktif.map(u => u.id);
     const q = collection(db, "ujian_berjalan");
+    
     const unsubscribe = onSnapshot(q, (snapshot) => {
       const data = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
-      // Filter monitoring hanya untuk siswa yang mengikuti ujian yang diawasi pengawas ini
-      const examIds = daftarUjianAktif.map(u => u.id);
       const filteredMonitoring = data.filter((s: any) => examIds.includes(s.examId));
       setMonitoringSiswa(filteredMonitoring);
     });
@@ -165,7 +163,6 @@ export default function HalamanPengawas() {
         <div className="fixed inset-0 bg-slate-900/40 backdrop-blur-sm z-30 lg:hidden" onClick={() => setIsMobileOpen(false)}/>
       )}
 
-      {/* Sidebar */}
       <aside className={`fixed inset-y-0 left-0 z-40 bg-white border-r transition-all duration-300 transform
         ${isMobileOpen ? 'translate-x-0 w-72' : '-translate-x-full lg:translate-x-0'}
         ${isSidebarOpen ? 'lg:w-72' : 'lg:w-20'} flex flex-col h-full`}>
@@ -228,7 +225,7 @@ export default function HalamanPengawas() {
         {activeMenu === 'Dashboard' && (
           <div className="space-y-6 animate-in fade-in duration-500">
             <div className="flex flex-col md:flex-row gap-4 items-center justify-between mb-4">
-              <h3 className="text-xl font-black text-slate-800 uppercase tracking-tighter">Jadwal Ujian Aktif Anda</h3>
+              <h3 className="text-xl font-black text-slate-800 uppercase tracking-tighter">Jadwal Ujian Aktif</h3>
               <div className="flex items-center gap-2 bg-white p-2 rounded-2xl border shadow-sm w-full md:w-auto">
                 <Filter size={18} className="text-slate-400 ml-2" />
                 <select 
@@ -264,7 +261,7 @@ export default function HalamanPengawas() {
               ))}
               {daftarUjianAktif.length === 0 && (
                 <div className="col-span-full py-20 bg-white rounded-[2.5rem] border border-dashed text-center">
-                  <p className="text-slate-400 font-bold uppercase tracking-widest text-sm">Anda belum ditugaskan pada ujian aktif manapun.</p>
+                  <p className="text-slate-400 font-bold uppercase tracking-widest text-sm">Tidak ada jadwal ujian untuk tugas Anda saat ini</p>
                 </div>
               )}
             </div>
@@ -288,12 +285,11 @@ export default function HalamanPengawas() {
                     <p className="text-[10px] font-black text-slate-400 uppercase tracking-widest leading-none mb-1">Mata Pelajaran</p>
                     <p className="font-bold text-slate-800 uppercase tracking-tighter">{u.mapel} - {u.namaUjian}</p>
                   </div>
-                  
                   <div className="flex flex-col items-center">
                     {!showTokens[u.id] ? (
                       <button 
                         onClick={() => setShowTokens(prev => ({...prev, [u.id]: true}))}
-                        className="bg-indigo-600 hover:bg-indigo-700 text-white px-8 py-3 rounded-2xl font-black text-xs uppercase tracking-widest transition-all shadow-lg shadow-indigo-100"
+                        className="bg-indigo-600 hover:bg-indigo-700 text-white px-8 py-3 rounded-2xl font-black text-xs uppercase tracking-widest transition-all"
                       >
                         Generate Token
                       </button>
@@ -308,22 +304,16 @@ export default function HalamanPengawas() {
                   </div>
                 </div>
               ))}
-              {daftarUjianAktif.length === 0 && (
-                <div className="text-center py-10 bg-white rounded-3xl border border-dashed">
-                  <p className="text-slate-400 font-bold uppercase text-sm">Tidak ada jadwal ujian untuk Anda saat ini.</p>
-                </div>
-              )}
             </div>
           </div>
         )}
 
-        {/* ... (Menu Monitor Ujian & Tata Tertib tetap sama seperti sebelumnya) ... */}
         {activeMenu === 'Monitor Ujian' && (
           <div className="space-y-6 animate-in fade-in">
              <div className="flex flex-col md:flex-row justify-between items-center bg-white p-6 rounded-[2.5rem] border shadow-sm gap-4">
                 <div className="flex gap-8">
                   <div className="text-center">
-                    <p className="text-[10px] font-black text-slate-400 uppercase leading-none mb-1">Total Siswa Pantau</p>
+                    <p className="text-[10px] font-black text-slate-400 uppercase leading-none mb-1">Total Siswa</p>
                     <p className="text-2xl font-black text-slate-800">{monitoringSiswa.length}</p>
                   </div>
                   <div className="text-center">
@@ -361,7 +351,7 @@ export default function HalamanPengawas() {
                         {siswa.violations || 0} Pelanggaran
                       </div>
                     </div>
-                    {/* ... (Footer Monitoring) ... */}
+
                     <div className="grid grid-cols-2 gap-4 border-t pt-4 items-end">
                        <div>
                           <p className="text-[9px] font-black text-slate-400 uppercase mb-2 leading-none">Tanda Tangan</p>
@@ -397,15 +387,11 @@ export default function HalamanPengawas() {
             <div className="space-y-6 text-slate-600 font-bold text-sm leading-relaxed">
               <div className="flex gap-4">
                  <span className="w-8 h-8 bg-slate-100 rounded-lg flex items-center justify-center shrink-0">1</span>
-                 <p>Dilarang memberikan token kepada siswa di luar jadwal yang telah ditentukan atau di luar ruangan ujian.</p>
+                 <p>Dilarang memberikan token kepada siswa di luar jadwal yang telah ditentukan.</p>
               </div>
               <div className="flex gap-4">
                  <span className="w-8 h-8 bg-slate-100 rounded-lg flex items-center justify-center shrink-0">2</span>
-                 <p>Pantau menu Monitor Ujian secara berkala. Sistem akan mencatat setiap kali siswa berpindah tab atau meminimalkan browser.</p>
-              </div>
-              <div className="flex gap-4">
-                 <span className="w-8 h-8 bg-slate-100 rounded-lg flex items-center justify-center shrink-0">3</span>
-                 <p>Verifikasi Kehadiran: Pastikan tanda tangan yang muncul di monitor sesuai dengan siswa yang hadir di ruangan.</p>
+                 <p>Pantau menu Monitor Ujian secara berkala untuk melihat aktivitas mencurigakan siswa.</p>
               </div>
             </div>
           </div>

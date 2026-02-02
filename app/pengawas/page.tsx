@@ -3,7 +3,7 @@ import { useState, useEffect } from 'react';
 import { db, auth } from '@/lib/firebase';
 import { onAuthStateChanged } from 'firebase/auth';
 import { 
-  collection, query, where, doc, getDoc, onSnapshot 
+  collection, query, where, doc, getDoc, onSnapshot, updateDoc 
 } from 'firebase/firestore';
 import { useRouter } from 'next/navigation';
 import { 
@@ -11,6 +11,19 @@ import {
   ShieldCheck, Search, Users, AlertTriangle,
   Clock, BookOpen, Filter, Loader2, RefreshCw
 } from 'lucide-react';
+
+// Definisi Interface untuk memastikan Type Safety pada data Ujian
+interface UjianData {
+  id: string;
+  namaUjian: string;
+  mapel: string;
+  kelas: string | string[];
+  durasi: number;
+  status: string;
+  token?: string;
+  tokenDinamis?: string; // Menyimpan token yang digenerate pengawas
+  lastTokenUpdate?: any;
+}
 
 export default function HalamanPengawas() {
   const [activeMenu, setActiveMenu] = useState('Dashboard');
@@ -21,14 +34,13 @@ export default function HalamanPengawas() {
   const [loading, setLoading] = useState(true);
   const router = useRouter();
 
-  // State Data
-  const [daftarUjianAktif, setDaftarUjianAktif] = useState<any[]>([]);
+  // State Data Utama
+  const [daftarUjianAktif, setDaftarUjianAktif] = useState<UjianData[]>([]);
   const [monitoringSiswa, setMonitoringSiswa] = useState<any[]>([]);
   const [filterKelas, setFilterKelas] = useState('Semua');
   const [searchQuery, setSearchQuery] = useState('');
   
-  // State khusus untuk Token Ujian
-  const [dynamicTokens, setDynamicTokens] = useState<{ [key: string]: string }>({});
+  // State untuk melacak ujian mana yang sudah di-generate tokennya secara lokal
   const [generatedExams, setGeneratedExams] = useState<{ [key: string]: boolean }>({});
 
   const menuItems = [
@@ -39,20 +51,21 @@ export default function HalamanPengawas() {
   ];
 
   /**
-   * Fungsi untuk menghasilkan token 6 digit yang berubah setiap 15 menit.
-   * Token bersifat unik untuk setiap ujian berdasarkan baseToken/ID-nya.
+   * Fungsi untuk menghasilkan token 6 digit yang unik per ujian.
+   * Menggabungkan ID Ujian dan interval waktu 15 menit agar token berbeda antar kartu.
    */
-  const generateDynamicToken = (baseToken: string) => {
-    if (!baseToken) return "";
+  const generateUniqueToken = (ujianId: string) => {
+    if (!ujianId) return "";
     const now = new Date();
-    // Interval 15 menit (15 * 60 * 1000 milidetik)
+    // Interval 15 menit (15 * 60 * 1000 ms)
     const interval = Math.floor(now.getTime() / (15 * 60 * 1000));
-    // Generate hash sederhana dan ambil 6 karakter pertama (Huruf & Angka)
-    const hash = btoa(`${baseToken}-${interval}`).replace(/[^A-Z0-9]/gi, '');
+    // Base64 encoding dari gabungan ID dan waktu untuk menjamin perbedaan antar ujian
+    const rawString = `${ujianId}-${interval}`;
+    const hash = btoa(rawString).replace(/[^A-Z0-9]/gi, '');
     return hash.substring(0, 6).toUpperCase();
   };
 
-  // --- 1. OTENTIKASI & OTORISASI ---
+  // --- 1. PROSES OTENTIKASI DAN OTORISASI ---
   useEffect(() => {
     const unsubscribe = onAuthStateChanged(auth, async (user) => {
       if (user) {
@@ -79,17 +92,29 @@ export default function HalamanPengawas() {
     return () => unsubscribe();
   }, [router]);
 
-  // --- 2. FETCH DATA UJIAN & MONITORING REAL-TIME ---
+  // --- 2. PENGAMBILAN DATA REAL-TIME DARI FIRESTORE ---
   useEffect(() => {
     if (!authorized) return;
     
-    // Ambil daftar ujian dengan status 'aktif'
+    // Sinkronisasi daftar ujian yang sedang aktif
     const qUjian = query(collection(db, "ujian"), where("status", "==", "aktif"));
     const unsubUjian = onSnapshot(qUjian, (snapshot) => {
-      setDaftarUjianAktif(snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() })));
+      const data = snapshot.docs.map(doc => ({ 
+        id: doc.id, 
+        ...doc.data() 
+      } as UjianData));
+      
+      setDaftarUjianAktif(data);
+      
+      // Update state generatedExams jika tokenDinamis sudah ada di database
+      const alreadyGenerated: { [key: string]: boolean } = {};
+      data.forEach(u => {
+        if (u.tokenDinamis) alreadyGenerated[u.id] = true;
+      });
+      setGeneratedExams(prev => ({ ...prev, ...alreadyGenerated }));
     });
 
-    // Ambil data monitoring siswa
+    // Sinkronisasi data monitoring siswa yang sedang menempuh ujian
     const unsubMonitor = onSnapshot(collection(db, "ujian_berjalan"), (snapshot) => {
       setMonitoringSiswa(snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() })));
     });
@@ -97,26 +122,48 @@ export default function HalamanPengawas() {
     return () => { unsubUjian(); unsubMonitor(); };
   }, [authorized]);
 
-  // --- 3. LOGIKA UPDATE TOKEN DINAMIS (SINKRONISASI SETIAP 1 MENIT) ---
+  // --- 3. LOGIKA UPDATE TOKEN DINAMIS OTOMATIS KE DATABASE (TIAP 1 MENIT) ---
   useEffect(() => {
-    const updateAllTokens = () => {
-      const newTokens: { [key: string]: string } = {};
-      daftarUjianAktif.forEach(u => {
-        // Token hanya diupdate jika tombol "Generate" sudah ditekan
-        if (generatedExams[u.id]) {
-          newTokens[u.id] = generateDynamicToken(u.token || u.id);
+    const updateTokensInDatabase = async () => {
+      for (const ujian of daftarUjianAktif) {
+        if (generatedExams[ujian.id]) {
+          const newToken = generateUniqueToken(ujian.id);
+          
+          // Update database hanya jika token berubah (saat masuk interval 15 menit baru)
+          if (ujian.tokenDinamis !== newToken) {
+            try {
+              const ujianRef = doc(db, "ujian", ujian.id);
+              await updateDoc(ujianRef, {
+                tokenDinamis: newToken,
+                lastTokenUpdate: new Date()
+              });
+            } catch (err) {
+              console.error("Gagal memperbarui token ke database:", err);
+            }
+          }
         }
-      });
-      setDynamicTokens(newTokens);
+      }
     };
 
-    updateAllTokens();
-    const intervalId = setInterval(updateAllTokens, 60000); 
+    const intervalId = setInterval(updateTokensInDatabase, 60000); // Sinkronisasi internal setiap 60 detik
+    updateTokensInDatabase();
+    
     return () => clearInterval(intervalId);
   }, [daftarUjianAktif, generatedExams]);
 
-  const handleGenerateClick = (ujianId: string) => {
-    setGeneratedExams(prev => ({ ...prev, [ujianId]: true }));
+  // Handler untuk menekan tombol Generate Token pertama kali
+  const handleGenerateToken = async (ujianId: string) => {
+    const initialToken = generateUniqueToken(ujianId);
+    try {
+      const ujianRef = doc(db, "ujian", ujianId);
+      await updateDoc(ujianRef, {
+        tokenDinamis: initialToken,
+        lastTokenUpdate: new Date()
+      });
+      setGeneratedExams(prev => ({ ...prev, [ujianId]: true }));
+    } catch (err) {
+      alert("Gagal mengaktifkan token ujian.");
+    }
   };
 
   const daftarKelas = Array.from(new Set(daftarUjianAktif.flatMap(u => 
@@ -133,6 +180,11 @@ export default function HalamanPengawas() {
 
   return (
     <div className="min-h-screen bg-slate-50 flex font-sans overflow-x-hidden">
+      {/* Mobile Sidebar Overlay */}
+      {isMobileOpen && (
+        <div className="fixed inset-0 bg-slate-900/40 backdrop-blur-sm z-30 lg:hidden" onClick={() => setIsMobileOpen(false)}/>
+      )}
+
       {/* Sidebar Navigation */}
       <aside className={`fixed inset-y-0 left-0 z-40 bg-white border-r transition-all duration-300 transform
         ${isMobileOpen ? 'translate-x-0 w-72' : '-translate-x-full lg:translate-x-0'}
@@ -172,6 +224,7 @@ export default function HalamanPengawas() {
       </aside>
 
       <main className={`flex-1 transition-all duration-300 ${isSidebarOpen ? 'lg:ml-72' : 'lg:ml-20'} p-4 md:p-8`}>
+        {/* Header Bar */}
         <header className="flex justify-between items-center mb-8 bg-white p-4 rounded-3xl border shadow-sm sticky top-4 z-20">
           <div className="flex items-center gap-4">
             <button onClick={() => setIsMobileOpen(true)} className="lg:hidden p-2.5 bg-slate-50 text-indigo-600 rounded-xl">
@@ -199,9 +252,7 @@ export default function HalamanPengawas() {
             <div className="bg-indigo-600 p-8 rounded-[2.5rem] text-white shadow-xl shadow-indigo-100 relative overflow-hidden">
                <div className="relative z-10">
                 <h3 className="text-2xl font-black uppercase tracking-tighter">Pusat Token Ujian</h3>
-                <p className="text-indigo-100 text-xs font-medium mt-2 italic">
-                  Token berubah otomatis setiap 15 menit demi keamanan. Pastikan ujian sudah sesuai jadwal.
-                </p>
+                <p className="text-indigo-100 text-xs font-medium mt-2 italic">Setiap kartu ujian memiliki token unik. Token akan tersimpan di database dan berubah tiap 15 menit.</p>
                </div>
                <Key size={120} className="absolute -right-4 -bottom-4 text-white/10 rotate-12" />
             </div>
@@ -209,33 +260,33 @@ export default function HalamanPengawas() {
             <div className="grid grid-cols-1 gap-4">
               {daftarUjianAktif.length > 0 ? (
                 daftarUjianAktif.map(u => (
-                  <div key={u.id} className="bg-white p-6 rounded-3xl border flex flex-col md:flex-row items-center justify-between shadow-sm gap-6 hover:border-indigo-200 transition-all">
+                  <div key={u.id} className="bg-white p-6 rounded-3xl border flex flex-col md:flex-row items-center justify-between shadow-sm gap-4 hover:border-indigo-300 transition-all">
                     <div className="text-center md:text-left flex-1">
                       <p className="text-[10px] font-black text-slate-400 uppercase tracking-widest leading-none mb-1">Mata Pelajaran</p>
                       <p className="font-bold text-slate-800 uppercase tracking-tighter text-lg">{u.mapel} - {u.namaUjian}</p>
-                      <p className="text-xs text-indigo-500 font-bold mt-1">Kelas: {Array.isArray(u.kelas) ? u.kelas.join(", ") : u.kelas}</p>
+                      <p className="text-[10px] text-indigo-500 font-bold mt-1 uppercase">Kelas: {Array.isArray(u.kelas) ? u.kelas.join(", ") : u.kelas}</p>
                     </div>
 
                     {!generatedExams[u.id] ? (
                       <button 
-                        onClick={() => handleGenerateClick(u.id)}
+                        onClick={() => handleGenerateToken(u.id)}
                         className="flex items-center gap-2 bg-indigo-600 hover:bg-indigo-700 text-white px-8 py-4 rounded-2xl font-black text-sm uppercase tracking-wider transition-all shadow-lg active:scale-95"
                       >
                         <RefreshCw size={18} className="animate-pulse" /> Generate Token
                       </button>
                     ) : (
-                      <div className="text-center bg-indigo-50 border-2 border-dashed border-indigo-200 px-10 py-4 rounded-2xl animate-in zoom-in">
-                        <p className="text-[10px] font-black text-indigo-400 uppercase mb-1 leading-none">Token Aktif Saat Ini</p>
+                      <div className="text-center bg-slate-50 border-2 border-dashed border-indigo-200 px-10 py-4 rounded-2xl animate-in zoom-in">
+                        <p className="text-[10px] font-black text-indigo-400 uppercase mb-1 leading-none">Token Aktif (Berbeda Per Ujian)</p>
                         <p className="text-4xl font-black text-indigo-600 tracking-[0.2em] font-mono">
-                            {dynamicTokens[u.id] || "......"}
+                            {u.tokenDinamis || "......"}
                         </p>
-                        <p className="text-[9px] text-indigo-300 font-bold mt-2 uppercase">Valid 15 Menit • Refresh Otomatis</p>
+                        <p className="text-[9px] text-indigo-300 font-bold mt-2 uppercase">Sinkron Otomatis Tiap 15 Menit</p>
                       </div>
                     )}
                   </div>
                 ))
               ) : (
-                <div className="col-span-full py-20 bg-white rounded-[2.5rem] border border-dashed text-center">
+                <div className="py-20 bg-white rounded-[2.5rem] border border-dashed text-center">
                   <p className="text-slate-400 font-bold uppercase tracking-widest text-sm">Tidak ada ujian aktif saat ini</p>
                 </div>
               )}
@@ -271,7 +322,7 @@ export default function HalamanPengawas() {
                       <BookOpen size={24}/>
                     </div>
                     <span className="bg-green-100 text-green-600 text-[10px] font-black px-3 py-1 rounded-full uppercase border border-green-200">
-                      Berjalan
+                      Aktif
                     </span>
                   </div>
                   <h4 className="text-lg font-black text-slate-800 uppercase leading-tight mb-2 tracking-tighter">{ujian.namaUjian}</h4>
@@ -281,11 +332,6 @@ export default function HalamanPengawas() {
                   </div>
                 </div>
               ))}
-              {daftarUjianAktif.length === 0 && (
-                <div className="col-span-full py-20 bg-white rounded-[2.5rem] border border-dashed text-center">
-                  <p className="text-slate-400 font-bold uppercase tracking-widest text-sm">Tidak ada ujian berjalan</p>
-                </div>
-              )}
             </div>
           </div>
         )}
@@ -334,7 +380,7 @@ export default function HalamanPengawas() {
                         {siswa.violations || 0} Pelanggaran
                       </div>
                     </div>
-                    {/* Detail TTD & Status */}
+
                     <div className="grid grid-cols-2 gap-4 border-t pt-4 items-end">
                        <div>
                           <p className="text-[9px] font-black text-slate-400 uppercase mb-2 leading-none">Tanda Tangan</p>
@@ -371,15 +417,15 @@ export default function HalamanPengawas() {
             <div className="space-y-6 text-slate-600 font-bold text-sm leading-relaxed">
               <div className="flex gap-4">
                  <span className="w-8 h-8 bg-slate-100 rounded-lg flex items-center justify-center shrink-0">1</span>
-                 <p>Dilarang memberikan token kepada siswa di luar jadwal yang telah ditentukan atau di luar ruangan ujian.</p>
+                 <p>Jangan berikan token kepada siswa di luar jadwal resmi atau di luar ruangan ujian.</p>
               </div>
               <div className="flex gap-4">
                  <span className="w-8 h-8 bg-slate-100 rounded-lg flex items-center justify-center shrink-0">2</span>
-                 <p>Pantau menu Monitor Ujian secara berkala untuk mendeteksi siswa yang berpindah tab atau meminimalkan browser.</p>
+                 <p>Pantau Monitor Ujian secara aktif. Setiap indikasi kecurangan (pindah tab) akan dicatat sistem.</p>
               </div>
               <div className="flex gap-4">
                  <span className="w-8 h-8 bg-slate-100 rounded-lg flex items-center justify-center shrink-0">3</span>
-                 <p>Verifikasi Kehadiran: Pastikan tanda tangan elektronik yang muncul sesuai dengan identitas siswa di ruangan.</p>
+                 <p>Pastikan tanda tangan siswa di monitor sesuai dengan kehadiran fisik siswa.</p>
               </div>
             </div>
           </div>

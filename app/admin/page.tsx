@@ -21,15 +21,6 @@ import KelolaMapelSection from './kelola-mapel'; // Pastikan path benar
 import BankSoalSection from './bank-soal';
 import KelolaUjianSection from './kelola-ujian';
 
-const firebaseConfig = {
-  apiKey: "AIzaSyAssFyf3tsDnisxlZqdJKBUBi7mOM_HLXM",
-  authDomain: "aplikasiujianonline-5be47.firebaseapp.com",
-  projectId: "aplikasiujianonline-5be47",
-  storageBucket: "aplikasiujianonline-5be47.firebasestorage.app",
-  messagingSenderId: "1008856297907",
-  appId: "1:1008856297907:web:ec351d3aca4b924fb61bc6"
-};
-
 interface UserData {
   id: string;
   username: string;
@@ -397,7 +388,14 @@ function UserManagementSection() {
         const bstr = evt.target?.result;
         const wb = XLSX.read(bstr, { type: 'binary' });
         const data: any[] = XLSX.utils.sheet_to_json(wb.Sheets[wb.SheetNames[0]]);
-        const secApp = getApps().find(a => a.name === "Secondary") || initializeApp(firebaseConfig, "Secondary");
+        const secApp = getApps().find(a => a.name === "Secondary") || initializeApp({
+          apiKey: process.env.NEXT_PUBLIC_FIREBASE_API_KEY,
+          authDomain: process.env.NEXT_PUBLIC_FIREBASE_AUTH_DOMAIN,
+          projectId: process.env.NEXT_PUBLIC_FIREBASE_PROJECT_ID,
+          storageBucket: process.env.NEXT_PUBLIC_FIREBASE_STORAGE_BUCKET,
+          messagingSenderId: process.env.NEXT_PUBLIC_FIREBASE_MESSAGING_SENDER_ID,
+          appId: process.env.NEXT_PUBLIC_FIREBASE_APP_ID
+        }, "Secondary");
         const secAuth = getAuth(secApp);
 
         for (const user of data) {
@@ -428,7 +426,14 @@ function UserManagementSection() {
     setIsSubmitting(true);
     const uID = formData.username.toLowerCase().trim();
     try {
-      const secApp = getApps().find(a => a.name === "Secondary") || initializeApp(firebaseConfig, "Secondary");
+      const secApp = getApps().find(a => a.name === "Secondary") || initializeApp({
+        apiKey: process.env.NEXT_PUBLIC_FIREBASE_API_KEY,
+        authDomain: process.env.NEXT_PUBLIC_FIREBASE_AUTH_DOMAIN,
+        projectId: process.env.NEXT_PUBLIC_FIREBASE_PROJECT_ID,
+        storageBucket: process.env.NEXT_PUBLIC_FIREBASE_STORAGE_BUCKET,
+        messagingSenderId: process.env.NEXT_PUBLIC_FIREBASE_MESSAGING_SENDER_ID,
+        appId: process.env.NEXT_PUBLIC_FIREBASE_APP_ID
+      }, "Secondary");
       const secAuth = getAuth(secApp);
       const res = await createUserWithEmailAndPassword(secAuth, formData.email, formData.password);
       

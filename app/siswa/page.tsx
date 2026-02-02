@@ -1,9 +1,9 @@
 'use client'
-import { useState, useEffect } from 'react';
-import { db, auth } from '@/lib/firebase'; //
+import { useState, useEffect, useCallback } from 'react';
+import { db, auth } from '@/lib/firebase';
 import { onAuthStateChanged, User as FirebaseUser } from 'firebase/auth';
 import { 
-  doc, getDoc, getDocs, setDoc, 
+  doc, getDoc, getDocs, setDoc, updateDoc,
   collection, query, orderBy, where 
 } from 'firebase/firestore';
 import { useRouter } from 'next/navigation';
@@ -42,13 +42,57 @@ export default function HalamanSiswa() {
     { name: 'Hasil Ujian', icon: <BarChart3 size={20}/> },
   ];
 
-  // --- 1. REAL-TIME CLOCK FOR VALIDATION ---
+  // --- 1. SISTEM DETEKSI KECURANGAN (ANTI-CHEAT) ---
+  const handleViolation = useCallback(async () => {
+    if (!isVerified || !auth.currentUser) return;
+
+    const newViolationCount = violations + 1;
+    setViolations(newViolationCount);
+    
+    // Update ke database monitoring (ujian_berjalan)
+    try {
+      await updateDoc(doc(db, "ujian_berjalan", auth.currentUser.uid), {
+        violations: newViolationCount,
+        lastViolationAt: new Date(),
+        status: `Pelanggaran ke-${newViolationCount}`
+      });
+      alert(`Peringatan: Jangan meninggalkan halaman ujian! (Pelanggaran: ${newViolationCount})`);
+    } catch (err) {
+      console.error("Gagal mencatat pelanggaran:", err);
+    }
+  }, [isVerified, violations]);
+
+  useEffect(() => {
+    if (!isVerified) return;
+
+    // 1. Deteksi Pindah Tab (Tab Switching)
+    const handleVisibilityChange = () => {
+      if (document.hidden) {
+        handleViolation();
+      }
+    };
+
+    // 2. Deteksi Kehilangan Fokus (Buka Aplikasi Lain/Alt+Tab)
+    const handleBlur = () => {
+      handleViolation();
+    };
+
+    document.addEventListener("visibilitychange", handleVisibilityChange);
+    window.addEventListener("blur", handleBlur);
+
+    return () => {
+      document.removeEventListener("visibilitychange", handleVisibilityChange);
+      window.removeEventListener("blur", handleBlur);
+    };
+  }, [isVerified, handleViolation]);
+
+  // --- 2. JAM REAL-TIME ---
   useEffect(() => {
     const timer = setInterval(() => setCurrentTime(new Date()), 10000); 
     return () => clearInterval(timer);
   }, []);
 
-  // --- 2. AUTHENTICATION & PROFILE CHECK ---
+  // --- 3. AUTHENTICATION ---
   useEffect(() => {
     const unsubscribe = onAuthStateChanged(auth, async (user: FirebaseUser | null) => {
       if (user) {
@@ -70,17 +114,15 @@ export default function HalamanSiswa() {
     return () => unsubscribe();
   }, [router]);
 
-  // --- 3. FETCH DATA (UJIAN & USERS FOR MAPPING) ---
+  // --- 4. FETCH DATA ---
   useEffect(() => {
     if (authorized && userData?.kelas) {
       const fetchData = async () => {
         setLoadingUjian(true);
         try {
-          // Ambil data users untuk mapping nama pengawas
           const usersSnap = await getDocs(collection(db, "users"));
           setAllUsers(usersSnap.docs.map(d => ({ id: d.id, ...d.data() })));
 
-          // Ambil semua ujian aktif (Memerlukan Index Firestore)
           const q = query(
             collection(db, "ujian"), 
             where("status", "==", "aktif"),
@@ -110,7 +152,7 @@ export default function HalamanSiswa() {
     }
   }, [authorized, userData]);
 
-  // --- 4. LOGIKA MULAI UJIAN ---
+  // --- 5. MULAI UJIAN ---
   const handleStartUjian = async (ujian: any) => {
     const mulai = new Date(ujian.tglMulai);
     const selesai = new Date(ujian.tglSelesai);
@@ -143,6 +185,7 @@ export default function HalamanSiswa() {
             kelas: userData.kelas,
             status: 'Mengerjakan',
             mulaiAt: new Date(),
+            violations: 0,
             ujianId: ujian.id,
             namaUjian: ujian.namaUjian
           });
@@ -168,13 +211,18 @@ export default function HalamanSiswa() {
     </div>
   );
 
+  // VIEW: LEMBAR SOAL DENGAN MONITORING PELANGGARAN
   if (isVerified) {
     return (
       <div className="min-h-screen bg-slate-50 pb-20 font-sans">
         <header className="sticky top-0 z-50 bg-white border-b p-4 flex justify-between items-center px-6 md:px-20 shadow-sm">
           <div>
-            <h1 className="font-black text-blue-800 uppercase tracking-tighter">{selectedUjian?.namaUjian}</h1>
-            <p className="text-[10px] font-bold text-red-500 uppercase tracking-widest">Pelanggaran: {violations}</p>
+            <h1 className="font-black text-blue-800 uppercase tracking-tighter leading-none">{selectedUjian?.namaUjian}</h1>
+            <div className="flex items-center gap-2 mt-1">
+                <span className="text-[10px] font-bold text-red-500 uppercase tracking-widest bg-red-50 px-2 py-0.5 rounded-full border border-red-100">
+                    Pelanggaran: {violations}
+                </span>
+            </div>
           </div>
           <div className="bg-red-50 text-red-600 px-6 py-2 rounded-2xl font-mono font-black border border-red-100 flex items-center gap-2">
             <Clock size={18}/> {Math.floor(timeLeft / 60)}:{(timeLeft % 60).toString().padStart(2, '0')}
@@ -182,6 +230,11 @@ export default function HalamanSiswa() {
         </header>
 
         <div className="max-w-3xl mx-auto mt-8 p-4">
+          <div className="bg-amber-50 border-2 border-amber-200 p-4 rounded-2xl mb-8 flex items-center gap-4">
+             <AlertCircle className="text-amber-500 shrink-0" />
+             <p className="text-xs font-bold text-amber-700">Dilarang berpindah tab atau meminimalkan jendela browser. Pelanggaran dicatat oleh pengawas secara real-time.</p>
+          </div>
+
           {daftarSoal.map((s, i) => (
             <div key={s.id} className="bg-white p-8 rounded-[2.5rem] shadow-sm mb-6 border border-slate-100">
               <div className="flex gap-4 mb-6">
@@ -204,6 +257,7 @@ export default function HalamanSiswa() {
     );
   }
 
+  // VIEW: DASHBOARD (KARTU UJIAN LENGKAP)
   return (
     <div className="min-h-screen bg-slate-50 flex font-sans overflow-x-hidden">
       {isMobileOpen && <div className="fixed inset-0 bg-slate-900/40 backdrop-blur-sm z-30 lg:hidden" onClick={() => setIsMobileOpen(false)}/>}
@@ -293,7 +347,7 @@ export default function HalamanSiswa() {
                             </div>
                           </div>
                           
-                          <h4 className="text-xl font-black text-slate-800 tracking-tighter mb-4 uppercase">{u.namaUjian}</h4>
+                          <h4 className="text-xl font-black text-slate-800 tracking-tighter mb-4 uppercase leading-tight">{u.namaUjian}</h4>
                           
                           <div className="space-y-4 mb-8">
                             <div className="flex items-start gap-3">

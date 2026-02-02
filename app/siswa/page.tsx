@@ -1,5 +1,5 @@
 'use client'
-import { useState, useEffect, useCallback } from 'react';
+import { useState, useEffect, useCallback, useRef } from 'react';
 import { db, auth } from '@/lib/firebase';
 import { onAuthStateChanged, User as FirebaseUser } from 'firebase/auth';
 import { 
@@ -12,6 +12,7 @@ import {
   ShieldCheck, ChevronRight, Loader2, ClipboardCheck, 
   Clock, BookOpen, School, AlertCircle, Calendar, User, Timer
 } from 'lucide-react';
+import SignatureCanvas from 'react-signature-canvas';
 
 export default function HalamanSiswa() {
   // --- STATE MANAGEMENT ---
@@ -36,6 +37,13 @@ export default function HalamanSiswa() {
   const [timeLeft, setTimeLeft] = useState(3600);
   const [jawabanSiswa, setJawabanSiswa] = useState<{ [key: string]: string }>({});
 
+  // State Fitur Kehadiran & Token Baru
+  const [showTokenModal, setShowTokenModal] = useState(false);
+  const [showPresensiModal, setShowPresensiModal] = useState(false);
+  const [inputToken, setInputToken] = useState('');
+  const [isAgreed, setIsAgreed] = useState(false);
+  const sigPad = useRef<any>(null);
+
   const menuItems = [
     { name: 'Dashboard', icon: <LayoutDashboard size={20}/> },
     { name: 'Tata Tertib', icon: <FileText size={20}/> },
@@ -49,7 +57,6 @@ export default function HalamanSiswa() {
     const newViolationCount = violations + 1;
     setViolations(newViolationCount);
     
-    // Update ke database monitoring (ujian_berjalan)
     try {
       await updateDoc(doc(db, "ujian_berjalan", auth.currentUser.uid), {
         violations: newViolationCount,
@@ -65,14 +72,12 @@ export default function HalamanSiswa() {
   useEffect(() => {
     if (!isVerified) return;
 
-    // 1. Deteksi Pindah Tab (Tab Switching)
     const handleVisibilityChange = () => {
       if (document.hidden) {
         handleViolation();
       }
     };
 
-    // 2. Deteksi Kehilangan Fokus (Buka Aplikasi Lain/Alt+Tab)
     const handleBlur = () => {
       handleViolation();
     };
@@ -152,56 +157,71 @@ export default function HalamanSiswa() {
     }
   }, [authorized, userData]);
 
-  // --- 5. MULAI UJIAN ---
-  const handleStartUjian = async (ujian: any) => {
+  // --- 5. LOGIKA MULAI UJIAN & PRESENSI ---
+  const handleOpenTokenModal = (ujian: any) => {
     const mulai = new Date(ujian.tglMulai);
     const selesai = new Date(ujian.tglSelesai);
     
     if (currentTime < mulai) return alert("Ujian belum dimulai!");
     if (currentTime > selesai) return alert("Waktu ujian telah berakhir!");
-
-    const inputToken = prompt(`Masukkan Token untuk ujian: ${ujian.namaUjian}`);
     
-    if (inputToken?.trim().toUpperCase() === ujian.token?.trim().toUpperCase()) {
-      const user = auth.currentUser;
-      if (user) {
-        setLoadingUjian(true);
-        try {
-          const soalIds = ujian.soalTerpilih || [];
-          if (soalIds.length === 0) {
-            alert("Ujian ini belum memiliki butir soal. Hubungi Admin.");
-            return;
-          }
+    setSelectedUjian(ujian);
+    setShowTokenModal(true);
+  };
 
-          const fetchedSoal = await Promise.all(
-            soalIds.map(async (id: string) => {
-              const sDoc = await getDoc(doc(db, "bank_soal", id));
-              return sDoc.exists() ? { id: sDoc.id, ...sDoc.data() } : null;
-            })
-          );
-
-          await setDoc(doc(db, "ujian_berjalan", user.uid), {
-            nama: userData.nama,
-            kelas: userData.kelas,
-            status: 'Mengerjakan',
-            mulaiAt: new Date(),
-            violations: 0,
-            ujianId: ujian.id,
-            namaUjian: ujian.namaUjian
-          });
-
-          setDaftarSoal(fetchedSoal.filter(s => s !== null));
-          setSelectedUjian(ujian);
-          setTimeLeft(ujian.durasi * 60);
-          setIsVerified(true);
-        } catch (err) {
-          alert("Gagal memuat soal.");
-        } finally {
-          setLoadingUjian(false);
-        }
-      }
-    } else if (inputToken) {
+  const verifyToken = () => {
+    if (inputToken.trim().toUpperCase() === selectedUjian?.token?.trim().toUpperCase()) {
+      setShowTokenModal(false);
+      setShowPresensiModal(true);
+    } else {
       alert("Token tidak valid!");
+    }
+  };
+
+  const submitPresensiDanMulai = async () => {
+    if (sigPad.current.isEmpty()) return alert("Silakan tanda tangan terlebih dahulu!");
+    if (!isAgreed) return alert("Anda harus menyetujui pernyataan ujian!");
+
+    const user = auth.currentUser;
+    if (user && selectedUjian) {
+      setLoadingUjian(true);
+      try {
+        const signatureData = sigPad.current.getTrimmedCanvas().toDataURL('image/png');
+        const soalIds = selectedUjian.soalTerpilih || [];
+        
+        if (soalIds.length === 0) {
+          alert("Ujian ini belum memiliki butir soal. Hubungi Admin.");
+          setLoadingUjian(false);
+          return;
+        }
+
+        const fetchedSoal = await Promise.all(
+          soalIds.map(async (id: string) => {
+            const sDoc = await getDoc(doc(db, "bank_soal", id));
+            return sDoc.exists() ? { id: sDoc.id, ...sDoc.data() } : null;
+          })
+        );
+
+        await setDoc(doc(db, "ujian_berjalan", user.uid), {
+          nama: userData.nama,
+          kelas: userData.kelas,
+          status: 'Mengerjakan',
+          mulaiAt: new Date(),
+          violations: 0,
+          ujianId: selectedUjian.id,
+          namaUjian: selectedUjian.namaUjian,
+          tandaTangan: signatureData
+        });
+
+        setDaftarSoal(fetchedSoal.filter(s => s !== null));
+        setTimeLeft(selectedUjian.durasi * 60);
+        setIsVerified(true);
+        setShowPresensiModal(false);
+      } catch (err) {
+        alert("Gagal memproses kehadiran.");
+      } finally {
+        setLoadingUjian(false);
+      }
     }
   };
 
@@ -211,7 +231,7 @@ export default function HalamanSiswa() {
     </div>
   );
 
-  // VIEW: LEMBAR SOAL DENGAN MONITORING PELANGGARAN
+  // VIEW: LEMBAR SOAL
   if (isVerified) {
     return (
       <div className="min-h-screen bg-slate-50 pb-20 font-sans">
@@ -257,7 +277,7 @@ export default function HalamanSiswa() {
     );
   }
 
-  // VIEW: DASHBOARD (KARTU UJIAN LENGKAP)
+  // VIEW: DASHBOARD
   return (
     <div className="min-h-screen bg-slate-50 flex font-sans overflow-x-hidden">
       {isMobileOpen && <div className="fixed inset-0 bg-slate-900/40 backdrop-blur-sm z-30 lg:hidden" onClick={() => setIsMobileOpen(false)}/>}
@@ -392,7 +412,7 @@ export default function HalamanSiswa() {
                                 Ujian Selesai
                             </div>
                           ) : (
-                            <button onClick={() => handleStartUjian(u)} className="w-full bg-slate-900 text-white py-5 rounded-2xl font-black text-[10px] uppercase tracking-widest hover:bg-blue-600 transition-all flex items-center justify-center gap-2 shadow-lg shadow-slate-100 group-hover:shadow-blue-200">
+                            <button onClick={() => handleOpenTokenModal(u)} className="w-full bg-slate-900 text-white py-5 rounded-2xl font-black text-[10px] uppercase tracking-widest hover:bg-blue-600 transition-all flex items-center justify-center gap-2 shadow-lg shadow-slate-100 group-hover:shadow-blue-200">
                                 Mulai Kerjakan <ChevronRight size={18}/>
                             </button>
                           )}
@@ -423,6 +443,87 @@ export default function HalamanSiswa() {
             </div>
           )}
         </section>
+
+        {/* --- MODAL POP-UP --- */}
+        
+        {/* MODAL INPUT TOKEN */}
+        {showTokenModal && (
+          <div className="fixed inset-0 z-[100] flex items-center justify-center p-4 bg-slate-900/60 backdrop-blur-md">
+            <div className="bg-white rounded-[2.5rem] p-8 w-full max-w-md shadow-2xl border border-blue-100 animate-in zoom-in duration-300 text-center">
+              <div className="w-16 h-16 bg-blue-100 text-blue-600 rounded-2xl flex items-center justify-center mx-auto mb-4">
+                <ShieldCheck size={32} />
+              </div>
+              <h3 className="text-xl font-black text-slate-800 uppercase tracking-tighter">Verifikasi Akses</h3>
+              <p className="text-sm text-slate-500 font-medium mt-2 mb-6">Silakan masukkan token ujian untuk melanjutkan.</p>
+              
+              <input 
+                type="text" 
+                value={inputToken}
+                onChange={(e) => setInputToken(e.target.value)}
+                className="w-full bg-slate-50 border-2 border-slate-100 rounded-2xl p-4 text-center text-2xl font-black tracking-[0.5em] text-blue-600 focus:border-blue-500 outline-none transition-all uppercase mb-4"
+                placeholder="******"
+              />
+              
+              <div className="bg-amber-50 p-4 rounded-xl flex gap-3 border border-amber-100 text-left mb-8">
+                <AlertCircle size={20} className="text-amber-500 shrink-0" />
+                <p className="text-[11px] text-amber-700 font-bold leading-relaxed">
+                  TOKEN RAHASIA: Hubungi pengawas di ruangan Anda untuk mendapatkan kode token yang aktif.
+                </p>
+              </div>
+
+              <div className="flex gap-3">
+                <button onClick={() => setShowTokenModal(false)} className="flex-1 py-4 font-bold text-slate-400 hover:text-slate-600">Batal</button>
+                <button onClick={verifyToken} className="flex-[2] bg-blue-600 text-white py-4 rounded-2xl font-black uppercase tracking-widest shadow-lg shadow-blue-200 hover:bg-blue-700 transition-all">Verifikasi</button>
+              </div>
+            </div>
+          </div>
+        )}
+
+        {/* MODAL PRESENSI & TANDA TANGAN */}
+        {showPresensiModal && (
+          <div className="fixed inset-0 z-[100] flex items-center justify-center p-4 bg-slate-900/60 backdrop-blur-md overflow-y-auto">
+            <div className="bg-white rounded-[2.5rem] p-8 w-full max-w-2xl shadow-2xl border border-blue-100 my-auto animate-in zoom-in duration-300">
+              <h3 className="text-2xl font-black text-slate-800 uppercase tracking-tighter mb-2">Konfirmasi Kehadiran</h3>
+              <p className="text-sm text-slate-500 mb-6">Lengkapi data kehadiran di bawah ini sebelum memulai ujian.</p>
+
+              <div className="space-y-6">
+                <div>
+                  <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest mb-2 block">Tanda Tangan Digital (Gunakan Mouse/Layar Sentuh)</label>
+                  <div className="border-2 border-dashed border-slate-200 rounded-2xl bg-slate-50 overflow-hidden">
+                    <SignatureCanvas 
+                      ref={sigPad}
+                      penColor='black'
+                      canvasProps={{className: 'w-full h-48 cursor-crosshair'}}
+                    />
+                  </div>
+                  <button onClick={() => sigPad.current.clear()} className="text-[10px] font-bold text-red-500 mt-2 uppercase underline hover:text-red-700 transition-colors">Hapus & Ulangi Tanda Tangan</button>
+                </div>
+
+                <div className="bg-blue-50 p-6 rounded-2xl border border-blue-100">
+                  <div className="flex items-start gap-4">
+                    <input 
+                      type="checkbox" 
+                      id="agree" 
+                      checked={isAgreed}
+                      onChange={(e) => setIsAgreed(e.target.checked)}
+                      className="w-5 h-5 mt-1 accent-blue-600 cursor-pointer"
+                    />
+                    <label htmlFor="agree" className="text-xs font-bold text-blue-900 leading-relaxed cursor-pointer">
+                      SAYA MENYATAKAN SIAP MENGIKUTI UJIAN INI DENGAN JUJUR DAN MANDIRI. SAYA MEMAHAMI BAHWA SEGALA BENTUK PELANGGARAN TERMASUK PINDAH TAB ATAU MEMINIMALKAN JENDELA AKAN DICATAT OTOMATIS OLEH SISTEM.
+                    </label>
+                  </div>
+                </div>
+
+                <button 
+                  onClick={submitPresensiDanMulai}
+                  className="w-full bg-green-600 text-white py-5 rounded-2xl font-black text-lg uppercase tracking-widest shadow-xl shadow-green-100 hover:bg-green-700 transition-all transform active:scale-[0.98]"
+                >
+                  Setujui & Lanjut Ujian
+                </button>
+              </div>
+            </div>
+          </div>
+        )}
       </main>
     </div>
   );

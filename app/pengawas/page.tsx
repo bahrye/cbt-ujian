@@ -34,40 +34,53 @@ export default function HalamanPengawas() {
     { name: 'Tata Tertib', icon: <FileText size={20}/> },
   ];
 
-  // --- 1. AUTHENTICATION & AUTHORIZATION (PERBAIKAN) ---
+  // --- 1. AUTHENTICATION & AUTHORIZATION (DEEP CHECK) ---
   useEffect(() => {
     const unsubscribe = onAuthStateChanged(auth, async (user) => {
       if (user) {
+        console.log("User terdeteksi di Auth:", user.uid); // Debug log
         try {
-          const authDoc = await getDoc(doc(db, "users_auth", user.uid));
+          // 1. Cek dokumen di users_auth berdasarkan UID Firebase
+          const authDocRef = doc(db, "users_auth", user.uid);
+          const authDoc = await getDoc(authDocRef);
           
           if (authDoc.exists()) {
             const authData = authDoc.data();
+            console.log("Data Auth ditemukan:", authData); // Debug log
             
-            // Pastikan role adalah pengawas
+            // 2. Cek Role (Pastikan di database tulisannya 'pengawas')
             if (authData.role === 'pengawas') {
-              const profileDoc = await getDoc(doc(db, "users", authData.username));
               
-              if (profileDoc.exists()) {
-                setUserData(profileDoc.data());
+              // 3. Ambil data profil dari koleksi 'users' menggunakan username
+              if (authData.username) {
+                const profileDoc = await getDoc(doc(db, "users", authData.username));
+                if (profileDoc.exists()) {
+                  setUserData(profileDoc.data());
+                } else {
+                  console.warn("Profil di koleksi 'users' tidak ada, menggunakan username auth");
+                  setUserData({ nama: authData.username });
+                }
               } else {
-                setUserData({ nama: authData.username || "Pengawas" });
+                setUserData({ nama: "Pengawas" });
               }
+              
               setAuthorized(true);
             } else {
-              // Jika bukan pengawas, lempar ke login
-              console.error("Akses ditolak: Role bukan pengawas");
+              console.error("Akses ditolak: Role Anda adalah", authData.role);
               router.push('/login');
             }
           } else {
-            console.error("Data autentikasi tidak ditemukan");
+            console.error("Dokumen users_auth tidak ditemukan untuk UID:", user.uid);
+            // Opsional: Jika dokumen tidak ada, mungkin perlu logout paksa
+            // auth.signOut(); 
             router.push('/login');
           }
         } catch (error) {
-          console.error("Error fetching auth data:", error);
+          console.error("Error sistem auth:", error);
           router.push('/login');
         }
       } else {
+        console.log("Tidak ada user aktif, kembali ke login.");
         router.push('/login');
       }
       setLoading(false);

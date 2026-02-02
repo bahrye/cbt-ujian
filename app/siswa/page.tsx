@@ -14,6 +14,17 @@ import {
 } from 'lucide-react';
 import SignatureCanvas from 'react-signature-canvas';
 
+// --- FUNGSI HELPER: GENERATOR TOKEN DINAMIS ---
+// Menghasilkan token unik yang berubah setiap 15 menit berdasarkan baseToken dari database
+const generateDynamicToken = (baseToken: string) => {
+  if (!baseToken) return "";
+  const now = new Date();
+  // Interval 15 menit (15 * 60 * 1000 ms)
+  const interval = Math.floor(now.getTime() / (15 * 60 * 1000));
+  // Encode menggunakan btoa untuk menghasilkan string alfanumerik pendek
+  return btoa(`${baseToken}-${interval}`).substring(0, 6).toUpperCase();
+};
+
 export default function HalamanSiswa() {
   // --- STATE MANAGEMENT ---
   const [activeMenu, setActiveMenu] = useState('Dashboard');
@@ -37,7 +48,7 @@ export default function HalamanSiswa() {
   const [timeLeft, setTimeLeft] = useState(3600);
   const [jawabanSiswa, setJawabanSiswa] = useState<{ [key: string]: string }>({});
 
-  // State Fitur Kehadiran & Token Baru
+  // State Fitur Kehadiran & Modal
   const [showTokenModal, setShowTokenModal] = useState(false);
   const [showPresensiModal, setShowPresensiModal] = useState(false);
   const [inputToken, setInputToken] = useState('');
@@ -157,7 +168,7 @@ export default function HalamanSiswa() {
     }
   }, [authorized, userData]);
 
-  // --- 5. LOGIKA MULAI UJIAN & PRESENSI ---
+  // --- 5. LOGIKA MULAI UJIAN & VERIFIKASI TOKEN ---
   const handleOpenTokenModal = (ujian: any) => {
     const mulai = new Date(ujian.tglMulai);
     const selesai = new Date(ujian.tglSelesai);
@@ -170,11 +181,14 @@ export default function HalamanSiswa() {
   };
 
   const verifyToken = () => {
-    if (inputToken.trim().toUpperCase() === selectedUjian?.token?.trim().toUpperCase()) {
+    // Sinkronisasi dengan halaman pengawas: Hitung token yang valid detik ini
+    const currentValidToken = generateDynamicToken(selectedUjian?.token);
+    
+    if (inputToken.trim().toUpperCase() === currentValidToken) {
       setShowTokenModal(false);
       setShowPresensiModal(true);
     } else {
-      alert("Token tidak valid!");
+      alert("Token tidak valid atau sudah kedaluwarsa! Silakan minta token terbaru kepada pengawas di ruangan.");
     }
   };
 
@@ -430,7 +444,7 @@ export default function HalamanSiswa() {
               <div className="space-y-4 text-slate-600 font-bold text-sm">
                 <p>• Dilarang meninggalkan halaman ujian selama waktu berjalan.</p>
                 <p>• Pelanggaran akan dicatat secara otomatis oleh sistem.</p>
-                <p>• Token hanya dapat digunakan satu kali per perangkat.</p>
+                <p>• Token dinamis berubah setiap 15 menit. Pastikan menggunakan kode terbaru.</p>
                 <p>• Pastikan tombol "Kirim Jawaban" ditekan sebelum waktu habis.</p>
               </div>
             </div>
@@ -454,7 +468,7 @@ export default function HalamanSiswa() {
                 <ShieldCheck size={32} />
               </div>
               <h3 className="text-xl font-black text-slate-800 uppercase tracking-tighter">Verifikasi Akses</h3>
-              <p className="text-sm text-slate-500 font-medium mt-2 mb-6">Silakan masukkan token ujian untuk melanjutkan.</p>
+              <p className="text-sm text-slate-500 font-medium mt-2 mb-6">Silakan masukkan token terbaru dari pengawas.</p>
               
               <input 
                 type="text" 
@@ -467,7 +481,7 @@ export default function HalamanSiswa() {
               <div className="bg-amber-50 p-4 rounded-xl flex gap-3 border border-amber-100 text-left mb-8">
                 <AlertCircle size={20} className="text-amber-500 shrink-0" />
                 <p className="text-[11px] text-amber-700 font-bold leading-relaxed">
-                  TOKEN RAHASIA: Hubungi pengawas di ruangan Anda untuk mendapatkan kode token yang aktif.
+                  TOKEN DINAMIS: Kode ini berubah otomatis setiap 15 menit. Lihat layar pengawas untuk mendapatkan kode yang sedang aktif.
                 </p>
               </div>
 

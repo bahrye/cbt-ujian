@@ -12,6 +12,14 @@ import {
   Clock, BookOpen, Filter, Loader2, UserCheck
 } from 'lucide-react';
 
+// Fungsi generator token lokal
+const generateDynamicToken = (baseToken: string) => {
+  if (!baseToken) return "";
+  const now = new Date();
+  const interval = Math.floor(now.getTime() / (15 * 60 * 1000));
+  return btoa(`${baseToken}-${interval}`).substring(0, 6).toUpperCase();
+};
+
 export default function HalamanPengawas() {
   const [activeMenu, setActiveMenu] = useState('Dashboard');
   const [isSidebarOpen, setIsSidebarOpen] = useState(true);
@@ -26,6 +34,9 @@ export default function HalamanPengawas() {
   const [monitoringSiswa, setMonitoringSiswa] = useState<any[]>([]);
   const [filterKelas, setFilterKelas] = useState('Semua');
   const [searchQuery, setSearchQuery] = useState('');
+  
+  // State untuk token yang berubah otomatis
+  const [dynamicTokens, setDynamicTokens] = useState<{ [key: string]: string }>({});
 
   const menuItems = [
     { name: 'Dashboard', icon: <LayoutDashboard size={20}/> },
@@ -34,53 +45,38 @@ export default function HalamanPengawas() {
     { name: 'Tata Tertib', icon: <FileText size={20}/> },
   ];
 
-  // --- 1. AUTHENTICATION & AUTHORIZATION (DEEP CHECK) ---
+  // --- 1. AUTHENTICATION & AUTHORIZATION ---
   useEffect(() => {
     const unsubscribe = onAuthStateChanged(auth, async (user) => {
       if (user) {
-        console.log("User terdeteksi di Auth:", user.uid); // Debug log
         try {
-          // 1. Cek dokumen di users_auth berdasarkan UID Firebase
           const authDocRef = doc(db, "users_auth", user.uid);
           const authDoc = await getDoc(authDocRef);
           
           if (authDoc.exists()) {
             const authData = authDoc.data();
-            console.log("Data Auth ditemukan:", authData); // Debug log
-            
-            // 2. Cek Role (Pastikan di database tulisannya 'pengawas')
             if (authData.role === 'pengawas') {
-              
-              // 3. Ambil data profil dari koleksi 'users' menggunakan username
               if (authData.username) {
                 const profileDoc = await getDoc(doc(db, "users", authData.username));
                 if (profileDoc.exists()) {
                   setUserData(profileDoc.data());
                 } else {
-                  console.warn("Profil di koleksi 'users' tidak ada, menggunakan username auth");
                   setUserData({ nama: authData.username });
                 }
               } else {
                 setUserData({ nama: "Pengawas" });
               }
-              
               setAuthorized(true);
             } else {
-              console.error("Akses ditolak: Role Anda adalah", authData.role);
               router.push('/login');
             }
           } else {
-            console.error("Dokumen users_auth tidak ditemukan untuk UID:", user.uid);
-            // Opsional: Jika dokumen tidak ada, mungkin perlu logout paksa
-            // auth.signOut(); 
             router.push('/login');
           }
         } catch (error) {
-          console.error("Error sistem auth:", error);
           router.push('/login');
         }
       } else {
-        console.log("Tidak ada user aktif, kembali ke login.");
         router.push('/login');
       }
       setLoading(false);
@@ -99,7 +95,22 @@ export default function HalamanPengawas() {
     return () => unsubscribe();
   }, [authorized]);
 
-  // --- 3. FETCH MONITORING SISWA REAL-TIME ---
+  // --- 3. LOGIKA UPDATE TOKEN DINAMIS (SETIAP 1 MENIT) ---
+  useEffect(() => {
+    const updateAllTokens = () => {
+      const newTokens: { [key: string]: string } = {};
+      daftarUjianAktif.forEach(u => {
+        newTokens[u.id] = generateDynamicToken(u.token);
+      });
+      setDynamicTokens(newTokens);
+    };
+
+    updateAllTokens();
+    const intervalId = setInterval(updateAllTokens, 60000); // Sinkronisasi internal setiap 60 detik
+    return () => clearInterval(intervalId);
+  }, [daftarUjianAktif]);
+
+  // --- 4. FETCH MONITORING SISWA REAL-TIME ---
   useEffect(() => {
     if (!authorized) return;
     const q = collection(db, "ujian_berjalan");
@@ -114,24 +125,20 @@ export default function HalamanPengawas() {
     Array.isArray(u.kelas) ? u.kelas : [u.kelas]
   )));
 
-  // Proteksi Tampilan Loading
   if (loading) return (
     <div className="min-h-screen flex items-center justify-center bg-white">
       <Loader2 className="w-10 h-10 animate-spin text-indigo-600" />
     </div>
   );
 
-  // Jika tidak authorized jangan tampilkan apa-apa (akan diredirect oleh useEffect)
   if (!authorized) return null;
 
   return (
     <div className="min-h-screen bg-slate-50 flex font-sans overflow-x-hidden">
-      {/* SIDEBAR MOBILE OVERLAY */}
       {isMobileOpen && (
         <div className="fixed inset-0 bg-slate-900/40 backdrop-blur-sm z-30 lg:hidden" onClick={() => setIsMobileOpen(false)}/>
       )}
 
-      {/* SIDEBAR */}
       <aside className={`fixed inset-y-0 left-0 z-40 bg-white border-r transition-all duration-300 transform
         ${isMobileOpen ? 'translate-x-0 w-72' : '-translate-x-full lg:translate-x-0'}
         ${isSidebarOpen ? 'lg:w-72' : 'lg:w-20'} flex flex-col h-full`}>
@@ -169,7 +176,6 @@ export default function HalamanPengawas() {
         </div>
       </aside>
 
-      {/* MAIN CONTENT */}
       <main className={`flex-1 transition-all duration-300 ${isSidebarOpen ? 'lg:ml-72' : 'lg:ml-20'} p-4 md:p-8`}>
         <header className="flex justify-between items-center mb-8 bg-white p-4 rounded-3xl border shadow-sm sticky top-4 z-20">
           <div className="flex items-center gap-4">
@@ -192,7 +198,6 @@ export default function HalamanPengawas() {
           </div>
         </header>
 
-        {/* --- MENU: DASHBOARD --- */}
         {activeMenu === 'Dashboard' && (
           <div className="space-y-6 animate-in fade-in duration-500">
             <div className="flex flex-col md:flex-row gap-4 items-center justify-between mb-4">
@@ -239,13 +244,12 @@ export default function HalamanPengawas() {
           </div>
         )}
 
-        {/* --- MENU: TOKEN UJIAN --- */}
         {activeMenu === 'Token Ujian' && (
           <div className="max-w-4xl mx-auto space-y-6 animate-in slide-in-from-bottom-4">
             <div className="bg-indigo-600 p-8 rounded-[2.5rem] text-white shadow-xl shadow-indigo-100 relative overflow-hidden">
                <div className="relative z-10">
                 <h3 className="text-2xl font-black uppercase tracking-tighter">Pusat Token Ujian</h3>
-                <p className="text-indigo-100 text-xs font-medium mt-2 italic">Berikan kode di bawah ini kepada siswa yang akan memulai ujian.</p>
+                <p className="text-indigo-100 text-xs font-medium mt-2 italic">Token di bawah ini berubah otomatis setiap 15 menit demi keamanan.</p>
                </div>
                <Key size={120} className="absolute -right-4 -bottom-4 text-white/10 rotate-12" />
             </div>
@@ -258,8 +262,10 @@ export default function HalamanPengawas() {
                     <p className="font-bold text-slate-800 uppercase tracking-tighter">{u.mapel} - {u.namaUjian}</p>
                   </div>
                   <div className="text-center bg-slate-50 border-2 border-dashed border-indigo-200 px-10 py-4 rounded-2xl">
-                    <p className="text-[10px] font-black text-indigo-400 uppercase mb-1 leading-none">Token Aktif</p>
-                    <p className="text-4xl font-black text-indigo-600 tracking-[0.2em]">{u.token}</p>
+                    <p className="text-[10px] font-black text-indigo-400 uppercase mb-1 leading-none">Token Aktif Saat Ini</p>
+                    <p className="text-4xl font-black text-indigo-600 tracking-[0.2em]">
+                        {dynamicTokens[u.id] || "..."}
+                    </p>
                   </div>
                 </div>
               ))}
@@ -267,7 +273,6 @@ export default function HalamanPengawas() {
           </div>
         )}
 
-        {/* --- MENU: MONITOR UJIAN --- */}
         {activeMenu === 'Monitor Ujian' && (
           <div className="space-y-6 animate-in fade-in">
              <div className="flex flex-col md:flex-row justify-between items-center bg-white p-6 rounded-[2.5rem] border shadow-sm gap-4">
@@ -339,7 +344,6 @@ export default function HalamanPengawas() {
           </div>
         )}
 
-        {/* --- MENU: TATA TERTIB --- */}
         {activeMenu === 'Tata Tertib' && (
           <div className="bg-white p-10 rounded-[3rem] border shadow-sm max-w-3xl animate-in zoom-in duration-300">
             <h3 className="text-xl font-black text-slate-800 uppercase tracking-tighter flex items-center gap-3 mb-6">

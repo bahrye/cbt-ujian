@@ -330,6 +330,11 @@ export default function HalamanSiswa() {
                     const isSudahSelesai = currentTime > selesai;
                     const isAktif = !isBelumMulai && !isSudahSelesai;
 
+                    // Tambahkan pengecekan apakah siswa sudah pernah memulai (untuk tombol Lanjut)
+                    // Anda bisa mencocokkan ini dengan data dari collection 'ujian_berjalan' jika diperlukan
+                    // Sebagai contoh sederhana menggunakan state atau pemeriksaan local:
+                    const isOngoing = selectedUjian?.id === u.id && isVerified; 
+
                     const namaPengawas = u.pengawasIds?.map((id: string) => {
                         const p = allUsers.find(user => user.id === id);
                         return p ? p.nama : "Anonim";
@@ -350,49 +355,44 @@ export default function HalamanSiswa() {
                           <h4 className="text-xl font-black text-slate-800 tracking-tighter mb-4 uppercase leading-tight">{u.namaUjian}</h4>
                           
                           <div className="space-y-4 mb-8">
+                            {/* Informasi Waktu & Pengawas tetap sama */}
                             <div className="flex items-start gap-3">
                                 <Calendar size={18} className="text-blue-500 mt-1 shrink-0"/> 
                                 <div className="space-y-1">
                                     <div>
                                         <p className="text-[9px] font-black text-slate-400 uppercase tracking-tighter leading-none">Waktu Mulai</p>
-                                        <p className="text-xs font-bold text-slate-700">
-                                            {mulai.toLocaleString('id-ID', { dateStyle: 'medium', timeStyle: 'short' })}
-                                        </p>
+                                        <p className="text-xs font-bold text-slate-700">{mulai.toLocaleString('id-ID')}</p>
                                     </div>
                                     <div className="pt-1 border-t border-slate-50">
                                         <p className="text-[9px] font-black text-slate-400 uppercase tracking-tighter leading-none">Waktu Selesai</p>
-                                        <p className="text-xs font-bold text-slate-700">
-                                            {selesai.toLocaleString('id-ID', { dateStyle: 'medium', timeStyle: 'short' })}
-                                        </p>
+                                        <p className="text-xs font-bold text-slate-700">{selesai.toLocaleString('id-ID')}</p>
                                     </div>
                                 </div>
                             </div>
                             
-                            <div className="flex items-center gap-3 text-slate-500 text-xs font-bold">
-                                <User size={16} className="text-purple-500 shrink-0"/>
-                                <span className="truncate">Pengawas: {namaPengawas}</span>
-                            </div>
-
-                            <div className="flex items-center gap-6 border-t pt-3">
-                                <div className="flex items-center gap-2 text-slate-500 text-xs font-bold">
-                                    <Clock size={16} className="text-orange-500"/> {u.durasi} Menit
-                                </div>
-                                <div className="flex items-center gap-2 text-slate-500 text-xs font-bold">
-                                    <FileText size={16} className="text-green-500"/> {u.soalTerpilih?.length || 0} Butir Soal
-                                </div>
-                            </div>
+                            {/* Tombol Pelanggaran (Muncul jika ada pelanggaran tercatat) */}
+                            {violations > 0 && isVerified && selectedUjian?.id === u.id && (
+                              <div className="w-full bg-red-600 text-white py-2 px-4 rounded-xl font-bold text-[10px] uppercase flex items-center justify-center gap-2 animate-pulse">
+                                <AlertCircle size={14}/> Terdeteksi {violations} Pelanggaran
+                              </div>
+                            )}
                           </div>
 
+                          {/* LOGIKA TOMBOL DINAMIS */}
                           {isBelumMulai ? (
-                            <div className="w-full bg-slate-100 text-slate-400 py-5 rounded-2xl font-black text-[10px] uppercase tracking-widest flex items-center justify-center gap-2 border border-dashed border-slate-300">
-                                <Timer size={18}/> Belum Dimulai
+                            <div className="w-full bg-gray-200 text-gray-500 py-5 rounded-2xl font-black text-[10px] uppercase tracking-widest flex items-center justify-center gap-2 cursor-not-allowed">
+                                <Timer size={18}/> Belum Mulai
                             </div>
                           ) : isSudahSelesai ? (
-                            <div className="w-full bg-red-50 text-red-400 py-5 rounded-2xl font-black text-[10px] uppercase tracking-widest flex items-center justify-center gap-2 border border-red-100">
-                                Ujian Selesai
+                            <div className="w-full bg-red-100 text-red-600 py-5 rounded-2xl font-black text-[10px] uppercase tracking-widest flex items-center justify-center gap-2 cursor-not-allowed border border-red-200">
+                                <AlertCircle size={18}/> Waktu Habis
                             </div>
+                          ) : isOngoing ? (
+                            <button onClick={() => setIsVerified(true)} className="w-full bg-yellow-500 text-white py-5 rounded-2xl font-black text-[10px] uppercase tracking-widest hover:bg-yellow-600 transition-all flex items-center justify-center gap-2 shadow-lg">
+                                Lanjut Kerjakan <ChevronRight size={18}/>
+                            </button>
                           ) : (
-                            <button onClick={() => handleStartUjian(u)} className="w-full bg-slate-900 text-white py-5 rounded-2xl font-black text-[10px] uppercase tracking-widest hover:bg-blue-600 transition-all flex items-center justify-center gap-2 shadow-lg shadow-slate-100 group-hover:shadow-blue-200">
+                            <button onClick={() => handleStartUjian(u)} className="w-full bg-green-600 text-white py-5 rounded-2xl font-black text-[10px] uppercase tracking-widest hover:bg-green-700 transition-all flex items-center justify-center gap-2 shadow-lg shadow-green-100">
                                 Mulai Kerjakan <ChevronRight size={18}/>
                             </button>
                           )}

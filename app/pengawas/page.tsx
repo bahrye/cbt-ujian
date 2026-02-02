@@ -3,22 +3,14 @@ import { useState, useEffect } from 'react';
 import { db, auth } from '@/lib/firebase';
 import { onAuthStateChanged } from 'firebase/auth';
 import { 
-  collection, query, where, getDocs, doc, getDoc, onSnapshot 
+  collection, query, where, doc, getDoc, onSnapshot 
 } from 'firebase/firestore';
 import { useRouter } from 'next/navigation';
 import { 
   LayoutDashboard, Key, Monitor, FileText, LogOut, Menu, 
-  ShieldCheck, Search, Users, AlertTriangle, CheckCircle2,
-  Clock, BookOpen, Filter, Loader2, UserCheck
+  ShieldCheck, Search, Users, AlertTriangle,
+  Clock, BookOpen, Filter, Loader2, RefreshCw
 } from 'lucide-react';
-
-// Fungsi generator token lokal
-const generateDynamicToken = (baseToken: string) => {
-  if (!baseToken) return "";
-  const now = new Date();
-  const interval = Math.floor(now.getTime() / (15 * 60 * 1000));
-  return btoa(`${baseToken}-${interval}`).substring(0, 6).toUpperCase();
-};
 
 export default function HalamanPengawas() {
   const [activeMenu, setActiveMenu] = useState('Dashboard');
@@ -35,8 +27,9 @@ export default function HalamanPengawas() {
   const [filterKelas, setFilterKelas] = useState('Semua');
   const [searchQuery, setSearchQuery] = useState('');
   
-  // State untuk token yang berubah otomatis
+  // State khusus untuk Token Ujian
   const [dynamicTokens, setDynamicTokens] = useState<{ [key: string]: string }>({});
+  const [generatedExams, setGeneratedExams] = useState<{ [key: string]: boolean }>({});
 
   const menuItems = [
     { name: 'Dashboard', icon: <LayoutDashboard size={20}/> },
@@ -45,7 +38,21 @@ export default function HalamanPengawas() {
     { name: 'Tata Tertib', icon: <FileText size={20}/> },
   ];
 
-  // --- 1. AUTHENTICATION & AUTHORIZATION ---
+  /**
+   * Fungsi untuk menghasilkan token 6 digit yang berubah setiap 15 menit.
+   * Token bersifat unik untuk setiap ujian berdasarkan baseToken/ID-nya.
+   */
+  const generateDynamicToken = (baseToken: string) => {
+    if (!baseToken) return "";
+    const now = new Date();
+    // Interval 15 menit (15 * 60 * 1000 milidetik)
+    const interval = Math.floor(now.getTime() / (15 * 60 * 1000));
+    // Generate hash sederhana dan ambil 6 karakter pertama (Huruf & Angka)
+    const hash = btoa(`${baseToken}-${interval}`).replace(/[^A-Z0-9]/gi, '');
+    return hash.substring(0, 6).toUpperCase();
+  };
+
+  // --- 1. OTENTIKASI & OTORISASI ---
   useEffect(() => {
     const unsubscribe = onAuthStateChanged(auth, async (user) => {
       if (user) {
@@ -53,23 +60,11 @@ export default function HalamanPengawas() {
           const authDocRef = doc(db, "users_auth", user.uid);
           const authDoc = await getDoc(authDocRef);
           
-          if (authDoc.exists()) {
+          if (authDoc.exists() && authDoc.data().role === 'pengawas') {
             const authData = authDoc.data();
-            if (authData.role === 'pengawas') {
-              if (authData.username) {
-                const profileDoc = await getDoc(doc(db, "users", authData.username));
-                if (profileDoc.exists()) {
-                  setUserData(profileDoc.data());
-                } else {
-                  setUserData({ nama: authData.username });
-                }
-              } else {
-                setUserData({ nama: "Pengawas" });
-              }
-              setAuthorized(true);
-            } else {
-              router.push('/login');
-            }
+            const profileDoc = await getDoc(doc(db, "users", authData.username));
+            setUserData(profileDoc.exists() ? profileDoc.data() : { nama: authData.username });
+            setAuthorized(true);
           } else {
             router.push('/login');
           }
@@ -84,42 +79,45 @@ export default function HalamanPengawas() {
     return () => unsubscribe();
   }, [router]);
 
-  // --- 2. FETCH UJIAN AKTIF ---
+  // --- 2. FETCH DATA UJIAN & MONITORING REAL-TIME ---
   useEffect(() => {
     if (!authorized) return;
-    const q = query(collection(db, "ujian"), where("status", "==", "aktif"));
-    const unsubscribe = onSnapshot(q, (snapshot) => {
-      const data = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
-      setDaftarUjianAktif(data);
+    
+    // Ambil daftar ujian dengan status 'aktif'
+    const qUjian = query(collection(db, "ujian"), where("status", "==", "aktif"));
+    const unsubUjian = onSnapshot(qUjian, (snapshot) => {
+      setDaftarUjianAktif(snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() })));
     });
-    return () => unsubscribe();
+
+    // Ambil data monitoring siswa
+    const unsubMonitor = onSnapshot(collection(db, "ujian_berjalan"), (snapshot) => {
+      setMonitoringSiswa(snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() })));
+    });
+
+    return () => { unsubUjian(); unsubMonitor(); };
   }, [authorized]);
 
-  // --- 3. LOGIKA UPDATE TOKEN DINAMIS (SETIAP 1 MENIT) ---
+  // --- 3. LOGIKA UPDATE TOKEN DINAMIS (SINKRONISASI SETIAP 1 MENIT) ---
   useEffect(() => {
     const updateAllTokens = () => {
       const newTokens: { [key: string]: string } = {};
       daftarUjianAktif.forEach(u => {
-        newTokens[u.id] = generateDynamicToken(u.token);
+        // Token hanya diupdate jika tombol "Generate" sudah ditekan
+        if (generatedExams[u.id]) {
+          newTokens[u.id] = generateDynamicToken(u.token || u.id);
+        }
       });
       setDynamicTokens(newTokens);
     };
 
     updateAllTokens();
-    const intervalId = setInterval(updateAllTokens, 60000); // Sinkronisasi internal setiap 60 detik
+    const intervalId = setInterval(updateAllTokens, 60000); 
     return () => clearInterval(intervalId);
-  }, [daftarUjianAktif]);
+  }, [daftarUjianAktif, generatedExams]);
 
-  // --- 4. FETCH MONITORING SISWA REAL-TIME ---
-  useEffect(() => {
-    if (!authorized) return;
-    const q = collection(db, "ujian_berjalan");
-    const unsubscribe = onSnapshot(q, (snapshot) => {
-      const data = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
-      setMonitoringSiswa(data);
-    });
-    return () => unsubscribe();
-  }, [authorized]);
+  const handleGenerateClick = (ujianId: string) => {
+    setGeneratedExams(prev => ({ ...prev, [ujianId]: true }));
+  };
 
   const daftarKelas = Array.from(new Set(daftarUjianAktif.flatMap(u => 
     Array.isArray(u.kelas) ? u.kelas : [u.kelas]
@@ -135,10 +133,7 @@ export default function HalamanPengawas() {
 
   return (
     <div className="min-h-screen bg-slate-50 flex font-sans overflow-x-hidden">
-      {isMobileOpen && (
-        <div className="fixed inset-0 bg-slate-900/40 backdrop-blur-sm z-30 lg:hidden" onClick={() => setIsMobileOpen(false)}/>
-      )}
-
+      {/* Sidebar Navigation */}
       <aside className={`fixed inset-y-0 left-0 z-40 bg-white border-r transition-all duration-300 transform
         ${isMobileOpen ? 'translate-x-0 w-72' : '-translate-x-full lg:translate-x-0'}
         ${isSidebarOpen ? 'lg:w-72' : 'lg:w-20'} flex flex-col h-full`}>
@@ -198,6 +193,57 @@ export default function HalamanPengawas() {
           </div>
         </header>
 
+        {/* --- MENU TOKEN UJIAN --- */}
+        {activeMenu === 'Token Ujian' && (
+          <div className="max-w-4xl mx-auto space-y-6 animate-in slide-in-from-bottom-4">
+            <div className="bg-indigo-600 p-8 rounded-[2.5rem] text-white shadow-xl shadow-indigo-100 relative overflow-hidden">
+               <div className="relative z-10">
+                <h3 className="text-2xl font-black uppercase tracking-tighter">Pusat Token Ujian</h3>
+                <p className="text-indigo-100 text-xs font-medium mt-2 italic">
+                  Token berubah otomatis setiap 15 menit demi keamanan. Pastikan ujian sudah sesuai jadwal.
+                </p>
+               </div>
+               <Key size={120} className="absolute -right-4 -bottom-4 text-white/10 rotate-12" />
+            </div>
+
+            <div className="grid grid-cols-1 gap-4">
+              {daftarUjianAktif.length > 0 ? (
+                daftarUjianAktif.map(u => (
+                  <div key={u.id} className="bg-white p-6 rounded-3xl border flex flex-col md:flex-row items-center justify-between shadow-sm gap-6 hover:border-indigo-200 transition-all">
+                    <div className="text-center md:text-left flex-1">
+                      <p className="text-[10px] font-black text-slate-400 uppercase tracking-widest leading-none mb-1">Mata Pelajaran</p>
+                      <p className="font-bold text-slate-800 uppercase tracking-tighter text-lg">{u.mapel} - {u.namaUjian}</p>
+                      <p className="text-xs text-indigo-500 font-bold mt-1">Kelas: {Array.isArray(u.kelas) ? u.kelas.join(", ") : u.kelas}</p>
+                    </div>
+
+                    {!generatedExams[u.id] ? (
+                      <button 
+                        onClick={() => handleGenerateClick(u.id)}
+                        className="flex items-center gap-2 bg-indigo-600 hover:bg-indigo-700 text-white px-8 py-4 rounded-2xl font-black text-sm uppercase tracking-wider transition-all shadow-lg active:scale-95"
+                      >
+                        <RefreshCw size={18} className="animate-pulse" /> Generate Token
+                      </button>
+                    ) : (
+                      <div className="text-center bg-indigo-50 border-2 border-dashed border-indigo-200 px-10 py-4 rounded-2xl animate-in zoom-in">
+                        <p className="text-[10px] font-black text-indigo-400 uppercase mb-1 leading-none">Token Aktif Saat Ini</p>
+                        <p className="text-4xl font-black text-indigo-600 tracking-[0.2em] font-mono">
+                            {dynamicTokens[u.id] || "......"}
+                        </p>
+                        <p className="text-[9px] text-indigo-300 font-bold mt-2 uppercase">Valid 15 Menit • Refresh Otomatis</p>
+                      </div>
+                    )}
+                  </div>
+                ))
+              ) : (
+                <div className="col-span-full py-20 bg-white rounded-[2.5rem] border border-dashed text-center">
+                  <p className="text-slate-400 font-bold uppercase tracking-widest text-sm">Tidak ada ujian aktif saat ini</p>
+                </div>
+              )}
+            </div>
+          </div>
+        )}
+
+        {/* --- MENU DASHBOARD --- */}
         {activeMenu === 'Dashboard' && (
           <div className="space-y-6 animate-in fade-in duration-500">
             <div className="flex flex-col md:flex-row gap-4 items-center justify-between mb-4">
@@ -237,42 +283,14 @@ export default function HalamanPengawas() {
               ))}
               {daftarUjianAktif.length === 0 && (
                 <div className="col-span-full py-20 bg-white rounded-[2.5rem] border border-dashed text-center">
-                  <p className="text-slate-400 font-bold uppercase tracking-widest text-sm">Tidak ada ujian aktif saat ini</p>
+                  <p className="text-slate-400 font-bold uppercase tracking-widest text-sm">Tidak ada ujian berjalan</p>
                 </div>
               )}
             </div>
           </div>
         )}
 
-        {activeMenu === 'Token Ujian' && (
-          <div className="max-w-4xl mx-auto space-y-6 animate-in slide-in-from-bottom-4">
-            <div className="bg-indigo-600 p-8 rounded-[2.5rem] text-white shadow-xl shadow-indigo-100 relative overflow-hidden">
-               <div className="relative z-10">
-                <h3 className="text-2xl font-black uppercase tracking-tighter">Pusat Token Ujian</h3>
-                <p className="text-indigo-100 text-xs font-medium mt-2 italic">Token di bawah ini berubah otomatis setiap 15 menit demi keamanan.</p>
-               </div>
-               <Key size={120} className="absolute -right-4 -bottom-4 text-white/10 rotate-12" />
-            </div>
-
-            <div className="grid grid-cols-1 gap-4">
-              {daftarUjianAktif.map(u => (
-                <div key={u.id} className="bg-white p-6 rounded-3xl border flex flex-col md:flex-row items-center justify-between shadow-sm gap-4">
-                  <div className="text-center md:text-left">
-                    <p className="text-[10px] font-black text-slate-400 uppercase tracking-widest leading-none mb-1">Mata Pelajaran</p>
-                    <p className="font-bold text-slate-800 uppercase tracking-tighter">{u.mapel} - {u.namaUjian}</p>
-                  </div>
-                  <div className="text-center bg-slate-50 border-2 border-dashed border-indigo-200 px-10 py-4 rounded-2xl">
-                    <p className="text-[10px] font-black text-indigo-400 uppercase mb-1 leading-none">Token Aktif Saat Ini</p>
-                    <p className="text-4xl font-black text-indigo-600 tracking-[0.2em]">
-                        {dynamicTokens[u.id] || "..."}
-                    </p>
-                  </div>
-                </div>
-              ))}
-            </div>
-          </div>
-        )}
-
+        {/* --- MENU MONITOR UJIAN --- */}
         {activeMenu === 'Monitor Ujian' && (
           <div className="space-y-6 animate-in fade-in">
              <div className="flex flex-col md:flex-row justify-between items-center bg-white p-6 rounded-[2.5rem] border shadow-sm gap-4">
@@ -316,7 +334,7 @@ export default function HalamanPengawas() {
                         {siswa.violations || 0} Pelanggaran
                       </div>
                     </div>
-
+                    {/* Detail TTD & Status */}
                     <div className="grid grid-cols-2 gap-4 border-t pt-4 items-end">
                        <div>
                           <p className="text-[9px] font-black text-slate-400 uppercase mb-2 leading-none">Tanda Tangan</p>
@@ -344,6 +362,7 @@ export default function HalamanPengawas() {
           </div>
         )}
 
+        {/* --- MENU TATA TERTIB --- */}
         {activeMenu === 'Tata Tertib' && (
           <div className="bg-white p-10 rounded-[3rem] border shadow-sm max-w-3xl animate-in zoom-in duration-300">
             <h3 className="text-xl font-black text-slate-800 uppercase tracking-tighter flex items-center gap-3 mb-6">
@@ -356,15 +375,11 @@ export default function HalamanPengawas() {
               </div>
               <div className="flex gap-4">
                  <span className="w-8 h-8 bg-slate-100 rounded-lg flex items-center justify-center shrink-0">2</span>
-                 <p>Pantau menu Monitor Ujian secara berkala. Sistem akan mencatat setiap kali siswa berpindah tab atau meminimalkan browser.</p>
+                 <p>Pantau menu Monitor Ujian secara berkala untuk mendeteksi siswa yang berpindah tab atau meminimalkan browser.</p>
               </div>
               <div className="flex gap-4">
                  <span className="w-8 h-8 bg-slate-100 rounded-lg flex items-center justify-center shrink-0">3</span>
-                 <p>Verifikasi Kehadiran: Pastikan tanda tangan yang muncul di monitor sesuai dengan siswa yang hadir di ruangan.</p>
-              </div>
-              <div className="flex gap-4">
-                 <span className="w-8 h-8 bg-slate-100 rounded-lg flex items-center justify-center shrink-0">4</span>
-                 <p>Tindakan Pelanggaran: Jika siswa melampaui batas pelanggaran yang wajar, pengawas berhak melakukan tindakan diskualifikasi sesuai aturan sekolah.</p>
+                 <p>Verifikasi Kehadiran: Pastikan tanda tangan elektronik yang muncul sesuai dengan identitas siswa di ruangan.</p>
               </div>
             </div>
           </div>
